@@ -76,7 +76,3 @@ export type ProvideFeedbackResult = {
   feedback: CouncilFeedback;
   state: CouncilState;
 };
-
-export type ResetSessionResult = {
-  state: CouncilState;
-};

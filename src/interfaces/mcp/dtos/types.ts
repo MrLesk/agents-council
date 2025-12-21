@@ -76,9 +76,3 @@ export type ProvideFeedbackResponse = {
   feedback: FeedbackDto;
   state: CouncilStateDto;
 };
-
-export type ResetSessionParams = Record<string, never>;
-
-export type ResetSessionResponse = {
-  state: CouncilStateDto;
-};

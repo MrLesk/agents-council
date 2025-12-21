@@ -5,7 +5,7 @@ status: Done
 assignee:
   - codex
 created_date: '2025-12-21 11:24'
-updated_date: '2025-12-21 15:22'
+updated_date: '2025-12-21 17:19'
 labels: []
 milestone: Council v1 (stdio)
 dependencies:
@@ -23,7 +23,7 @@ Define the council core service layout with service-scoped domain types and a Co
 <!-- AC:BEGIN -->
 - [x] #1 `src/core/services/council` exists with `index.ts` and `types.ts`; `src/core/state` remains for persistence.
 - [x] #2 Domain types cover session, request, feedback, participant, and state in `src/core/services/council/types.ts`.
-- [x] #3 `CouncilService` interface and implementation live in `src/core/services/council/index.ts` and expose requestFeedback, checkSession, provideFeedback, and resetSession.
+- [x] #3 `CouncilService` interface and implementation live in `src/core/services/council/index.ts` and expose requestFeedback, checkSession, and provideFeedback.
 - [x] #4 MCP DTOs live under `src/interfaces/mcp/dtos` and core services do not depend on them.
 - [x] #5 No MCP-specific types or transport logic exist in `src/core`.
 - [x] #6 Linting passes (Biome).

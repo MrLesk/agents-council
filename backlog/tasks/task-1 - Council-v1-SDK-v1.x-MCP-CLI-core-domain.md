@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - codex
 created_date: '2025-12-21 11:23'
-updated_date: '2025-12-21 17:06'
+updated_date: '2025-12-21 17:27'
 labels: []
 milestone: Council v1 (stdio)
 dependencies: []
@@ -21,7 +21,7 @@ Deliver the Bun-based council CLI (npm: agents-council, binary: council) with an
 <!-- AC:BEGIN -->
 - [ ] #1 `council mcp` starts the MCP stdio server using the TypeScript MCP SDK v1.x only.
 - [ ] #2 Running `council` without `mcp` prints the startup error message.
-- [ ] #3 MCP server exposes request_feedback, check_session, and provide_feedback (plus optional reset when enabled).
+- [ ] #3 MCP server exposes request_feedback, check_session, and provide_feedback.
 - [ ] #4 Core domain logic lives under `src/core` and the MCP interface only forwards to it.
 - [ ] #5 Compiled `council` binary is available for local use.
 - [ ] #6 All v1 subtasks are completed and integrated.
@@ -57,4 +57,8 @@ Subtask 1.2 updated and completed with service-scoped domain types and interface
 Subtask 1.3 complete: file-backed state store with lockfile + atomic writes; state path override supported; lint/format/typecheck pass.
 
 Subtask 1.4 complete: CouncilServiceImpl logic implemented with cursor-based polling and participant updates; lint/format/typecheck pass.
+
+Requirement change: reset_session tool removed; request_feedback now resets session state automatically in v1.
+
+Subtask 1.5 complete: MCP stdio adapter wired to CouncilService with three tools; DTO mapping added; zod dependency added; lint/format/typecheck pass.
 <!-- SECTION:NOTES:END -->

@@ -13,7 +13,6 @@ import type {
   ProvideFeedbackResult,
   RequestFeedbackInput,
   RequestFeedbackResult,
-  ResetSessionResult,
   SessionCursor,
 } from "./types";
 
@@ -21,7 +20,6 @@ export interface CouncilService {
   requestFeedback(input: RequestFeedbackInput): Promise<RequestFeedbackResult>;
   checkSession(input: CheckSessionInput): Promise<CheckSessionResult>;
   provideFeedback(input: ProvideFeedbackInput): Promise<ProvideFeedbackResult>;
-  resetSession(): Promise<ResetSessionResult>;
 }
 
 export class CouncilServiceImpl implements CouncilService {
@@ -30,7 +28,7 @@ export class CouncilServiceImpl implements CouncilService {
   async requestFeedback(input: RequestFeedbackInput): Promise<RequestFeedbackResult> {
     return this.store.update((state) => {
       const now = nowIso();
-      const session = state.session ?? createSession(now);
+      const session = createSession(now);
       const requestId = randomUUID();
       const request: CouncilRequest = {
         id: requestId,
@@ -40,7 +38,7 @@ export class CouncilServiceImpl implements CouncilService {
         status: "open",
       };
 
-      const { participants } = updateParticipant(state.participants, input.agentId, now, (participant) => ({
+      const { participants } = updateParticipant([], input.agentId, now, (participant) => ({
         ...participant,
         lastSeen: now,
         lastRequestSeen: requestId,
@@ -55,7 +53,8 @@ export class CouncilServiceImpl implements CouncilService {
       const nextState: CouncilState = {
         ...state,
         session: nextSession,
-        requests: [...closeOpenRequests(state.requests), request],
+        requests: [request],
+        feedback: [],
         participants,
       };
 
@@ -152,25 +151,6 @@ export class CouncilServiceImpl implements CouncilService {
       };
     });
   }
-
-  async resetSession(): Promise<ResetSessionResult> {
-    return this.store.update((state) => {
-      const nextState: CouncilState = {
-        ...state,
-        session: null,
-        requests: [],
-        feedback: [],
-        participants: [],
-      };
-
-      return {
-        state: nextState,
-        result: {
-          state: nextState,
-        },
-      };
-    });
-  }
 }
 
 function nowIso(): string {
@@ -184,10 +164,6 @@ function createSession(createdAt: string): CouncilSession {
     createdAt,
     currentRequestId: null,
   };
-}
-
-function closeOpenRequests(requests: CouncilRequest[]): CouncilRequest[] {
-  return requests.map((request) => (request.status === "open" ? { ...request, status: "closed" } : request));
 }
 
 function getCurrentRequest(state: CouncilState): CouncilRequest | null {

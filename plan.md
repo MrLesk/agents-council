@@ -9,8 +9,8 @@ Build a Bun + TypeScript CLI (npm package: `agents-council`, binary: `council`) 
 - Running `council` (without `mcp`) prints: `Startup error: you need to run council mcp in order to start the mcp server`.
 - NPM package name is `agents-council`; binary name is `council`.
 - Domain-driven structure: `src/core` contains domain types, services, and state. No business logic in MCP layer.
-- Tools only: `request_feedback`, `check_session`, `provide_feedback` (and optional reset if enabled).
-- Session creation is implicit in `request_feedback`.
+- Tools only: `request_feedback`, `check_session`, `provide_feedback`.
+- Session creation is implicit in `request_feedback`, which resets prior session state.
 - Join is implicit in `check_session`.
 - Single active session; no history; no explicit end/status tools in v1.
 - Non-blocking tool calls with explicit polling boundaries.
@@ -24,8 +24,8 @@ Build a Bun + TypeScript CLI (npm package: `agents-council`, binary: `council`) 
 ## Files and entry points
 - `src/cli/index.ts`: parse args, enforce `council mcp` usage.
 - `src/interfaces/mcp/server.ts`: MCP stdio server (SDK v1.x) adapter.
-- `src/core/types/`: shared domain types.
-- `src/core/services/councilService.ts`: domain logic.
+- `src/core/services/council/types.ts`: service-scoped domain types.
+- `src/core/services/council/index.ts`: CouncilService interface + implementation.
 - `src/core/state/`: JSON load/save, file locking, atomic write.
 - `package.json`, `tsconfig.json`, `bunfig.toml`: Bun build/run config and bin mapping.
 - `docs/` updates: usage and client configuration snippets.
@@ -72,8 +72,8 @@ JSON root (example structure):
 
 ## Tool semantics
 - `request_feedback({ content, agent_id })`
-  - If no active session, create one.
-  - Create a new request, set as current.
+  - Reset any prior session state (clear requests, feedback, participants).
+  - Create a new session and request, set as current.
   - Returns `session_id`, `request_id`.
 
 - `check_session({ agent_id, cursor? })`
@@ -111,7 +111,7 @@ JSON root (example structure):
 - SDK v1.x vs v2.x dependency drift.
 
 ## Open questions
-- Do we want a debug/reset tool for v1? --> yes, gated by env
+- None
 
 ## Inspiration
 
