@@ -53,6 +53,10 @@ export type GetCurrentSessionDataParams = {
   cursor?: string;
 };
 
+export type JoinCouncilParams = {
+  agent_name: string;
+};
+
 export type GetCurrentSessionDataResponse = {
   agent_name: string;
   session_id: string | null;

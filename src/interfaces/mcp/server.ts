@@ -16,6 +16,7 @@ import {
 import type {
   GetCurrentSessionDataParams,
   GetCurrentSessionDataResponse,
+  JoinCouncilParams,
   SendResponseParams,
   SendResponseResponse,
   StartCouncilParams,
@@ -23,7 +24,7 @@ import type {
 } from "./dtos/types";
 
 type ResponseFormat = "markdown" | "json";
-type ToolName = "start_council" | "get_current_session_data" | "send_response";
+type ToolName = "start_council" | "join_council" | "get_current_session_data" | "send_response";
 type ToolContext = {
   cursor?: string;
 };
@@ -50,6 +51,10 @@ const registerTool = <TParams>(
 
 const startCouncilSchema: z.ZodTypeAny = z.object({
   request: z.string().min(1),
+  agent_name: z.string().min(1),
+});
+
+const joinCouncilSchema: z.ZodTypeAny = z.object({
   agent_name: z.string().min(1),
 });
 
@@ -93,6 +98,26 @@ registerTool<GetCurrentSessionDataParams>(
       const result = await service.getCurrentSessionData(mapGetCurrentSessionDataInput(params));
       const response = mapGetCurrentSessionDataResponse(result);
       return toolOk("get_current_session_data", response, { cursor: params.cursor });
+    } catch (error) {
+      return toolError(error);
+    }
+  },
+);
+
+registerTool<JoinCouncilParams>(
+  "join_council",
+  {
+    description:
+      "Join the current council session and fetch session data. Use the server-assigned agent_name. Text format is set via the server --format/-f flag (markdown|json).",
+    inputSchema: joinCouncilSchema,
+  },
+  async (params) => {
+    try {
+      const result = await service.getCurrentSessionData(
+        mapGetCurrentSessionDataInput({ agent_name: params.agent_name }),
+      );
+      const response = mapGetCurrentSessionDataResponse(result);
+      return toolOk("join_council", response, { cursor: undefined });
     } catch (error) {
       return toolError(error);
     }
@@ -166,6 +191,8 @@ function formatToolText(toolName: ToolName, payload: unknown, context: ToolConte
     case "start_council":
       return formatStartCouncil(payload as StartCouncilResponse);
     case "get_current_session_data":
+      return formatGetCurrentSessionData(payload as GetCurrentSessionDataResponse, context);
+    case "join_council":
       return formatGetCurrentSessionData(payload as GetCurrentSessionDataResponse, context);
     case "send_response":
       return formatSendResponse(payload as SendResponseResponse);

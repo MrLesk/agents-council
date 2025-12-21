@@ -9,7 +9,7 @@ Build a Bun + TypeScript CLI (npm package: `agents-council`, binary: `council`) 
 - Running `council` (without `mcp`) prints: `Startup error: you need to run council mcp in order to start the mcp server`.
 - NPM package name is `agents-council`; binary name is `council`.
 - Domain-driven structure: `src/core` contains domain types, services, and state. No business logic in MCP layer.
-- Tools only: `start_council`, `get_current_session_data`, `send_response`.
+- Tools only: `start_council`, `join_council`, `get_current_session_data`, `send_response`.
 - Session creation is implicit in `start_council`, which resets prior session state.
 - Join is implicit in `get_current_session_data`.
 - Single active session; no history; no explicit end/status tools in v1.
@@ -75,6 +75,9 @@ JSON root (example structure):
   - Reset any prior session state (clear requests, responses, participants).
   - Create a new session and request, set as current.
   - Returns `session_id`, `request_id`.
+
+- `join_council({ agent_name })`
+  - Join the current session and return the full session view (same as `get_current_session_data` without a cursor).
 
 - `get_current_session_data({ agent_name, cursor? })`
   - Implicitly joins the session (registers/updates participant).

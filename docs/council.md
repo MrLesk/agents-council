@@ -41,9 +41,10 @@ Startup error: you need to run 'council mcp' in order to start the mcp server
 
 ## Tools (v1)
 
-The MCP server exposes three tools:
+The MCP server exposes four tools:
 
 - `start_council` (starts a new session and records the council request)
+- `join_council` (first-time entry point that returns the session request and responses)
 - `get_current_session_data` (returns the session request and responses, optionally from a cursor)
 - `send_response` (adds a response to the current request)
 
@@ -64,7 +65,7 @@ plain text for agents:
 - `start_council`:
   - `Council request received. Check again later for responses.`
   - `Your assigned name is: <agent_name>`
-- `get_current_session_data`:
+- `join_council` and `get_current_session_data`:
   - `Your assigned name is: <agent_name>`
   - `---`
   - `Council session started by <created_by>`
@@ -101,7 +102,7 @@ npx -y @modelcontextprotocol/inspector --cli ./dist/council mcp --method tools/c
 ```bash
 # terminal B
 npx -y @modelcontextprotocol/inspector --cli ./dist/council mcp --method tools/call \
-  --tool-name get_current_session_data --tool-arg agent_name=agent-b --transport stdio
+  --tool-name join_council --tool-arg agent_name=agent-b --transport stdio
 ```
 
 ```bash
