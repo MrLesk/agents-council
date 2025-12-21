@@ -1,0 +1,92 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+  checks: write
+  pull-requests: write
+
+jobs:
+  lint-and-typecheck:
+    name: lint-and-typecheck
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v6.0.1
+      - uses: oven-sh/setup-bun@v2.0.2
+        with:
+          bun-version: latest
+      - uses: actions/cache@v5.0.1
+        id: cache
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-${{ matrix.os }}-bun-latest-${{ hashFiles('**/bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ matrix.os }}-bun-latest-
+      - run: bun install --frozen-lockfile --linker=isolated
+      - run: bun run lint
+      - run: bun run typecheck
+
+  build-test:
+    name: compile-and-smoke-test
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: bun-linux-x64-baseline
+          - os: macos-latest
+            target: bun-darwin-x64
+          - os: windows-latest
+            target: bun-windows-x64-baseline
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v6.0.1
+      - uses: oven-sh/setup-bun@v2.0.2
+        with:
+          bun-version: latest
+      - uses: actions/cache@v5.0.1
+        id: cache
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-${{ matrix.os }}-bun-latest-${{ hashFiles('**/bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ matrix.os }}-bun-latest-
+      - run: bun install --frozen-lockfile --linker=isolated
+      - name: Prime Bun cache for baseline target (Windows workaround)
+        if: ${{ contains(matrix.target, 'baseline') && matrix.os == 'windows-latest' }}
+        shell: bash
+        run: |
+          # Workaround for https://github.com/oven-sh/bun/issues/13513
+          cd /c
+          mkdir -p bun-cache-primer
+          cd bun-cache-primer
+          echo 'console.log("cache primer")' > index.js
+          bun build --compile --target=${{ matrix.target }} ./index.js --outfile primer.exe || true
+          cd $GITHUB_WORKSPACE
+      - name: Build standalone binary
+        shell: bash
+        run: |
+          OUT="council-test${{ contains(matrix.target,'windows') && '.exe' || '' }}"
+          bun build src/cli/index.ts \
+            --compile --minify \
+            --target=${{ matrix.target }} \
+            --outfile="$OUT"
+      - name: Smoke-test binary
+        shell: bash
+        run: |
+          FILE="council-test${{ contains(matrix.target,'windows') && '.exe' || '' }}"
+          if [[ "${{ matrix.os }}" != "windows-latest" ]]; then
+            chmod +x "$FILE"
+          fi
+          if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
+            powershell -command "$out = & .\\$FILE 2>&1; if ($LASTEXITCODE -eq 0) { exit 1 }; if ($out -notmatch 'Startup error') { exit 1 }"
+          else
+            output=$("./$FILE" 2>&1 || true)
+            echo "$output" | grep -q "Startup error"
+          fi

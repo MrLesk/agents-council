@@ -1,0 +1,287 @@
+name: Release multi-platform executables
+
+on:
+  push:
+    tags: ['v*.*.*']
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  build:
+    name: build-${{ matrix.target }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: bun-linux-x64-baseline
+          - os: ubuntu-latest
+            target: bun-linux-arm64
+          - os: macos-latest
+            target: bun-darwin-x64
+          - os: macos-latest
+            target: bun-darwin-arm64
+          - os: windows-latest
+            target: bun-windows-x64-baseline
+    runs-on: ${{ matrix.os }}
+    env:
+      BIN: council-bin${{ contains(matrix.target,'windows') && '.exe' || '' }}
+    steps:
+      - uses: actions/checkout@v6.0.1
+      - uses: oven-sh/setup-bun@v2.0.2
+        with:
+          bun-version: latest
+      - uses: actions/cache@v5.0.1
+        id: cache
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-${{ matrix.target }}-bun-latest-${{ hashFiles('**/bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ matrix.target }}-bun-latest-
+      - run: bun install --frozen-lockfile
+      - name: Sync version to tag
+        shell: bash
+        run: |
+          TAG="${GITHUB_REF##refs/tags/v}"
+          jq ".version = \"$TAG\"" package.json > tmp.json && mv tmp.json package.json
+      - name: Prime Bun cache for baseline target (Windows workaround)
+        if: ${{ contains(matrix.target, 'baseline') && contains(matrix.target, 'windows') }}
+        shell: bash
+        run: |
+          # Workaround for https://github.com/oven-sh/bun/issues/13513
+          cd /c
+          mkdir -p bun-cache-primer
+          cd bun-cache-primer
+          echo 'console.log("cache primer")' > index.js
+          bun build --compile --target=${{ matrix.target }} ./index.js --outfile primer.exe || true
+          cd $GITHUB_WORKSPACE
+      - name: Compile standalone binary
+        shell: bash
+        run: |
+          mkdir -p dist
+          bun build src/cli/index.ts --compile --minify --target=${{ matrix.target }} --outfile=dist/${{ env.BIN }}
+      - name: Make binary executable (non-Windows)
+        if: ${{ !contains(matrix.target,'windows') }}
+        run: chmod +x "dist/${{ env.BIN }}"
+      - name: Check build output and move binary
+        shell: bash
+        run: |
+          echo "Contents of dist/:"
+          ls -la dist/
+          echo "Moving dist/${{ env.BIN }} to ${{ env.BIN }}"
+          mv dist/${{ env.BIN }} ${{ env.BIN }}
+          echo "Final binary size:"
+          ls -lh ${{ env.BIN }}
+      - uses: actions/upload-artifact@v6.0.0
+        with:
+          name: council-${{ matrix.target }}
+          path: ${{ env.BIN }}
+
+  npm-publish:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6.0.1
+      - name: Prepare npm package
+        shell: bash
+        run: |
+          mkdir -p dist
+          cp scripts/cli.cjs dist/cli.js
+          cp scripts/resolveBinary.cjs dist/resolveBinary.cjs
+          cp scripts/postuninstall.cjs dist/postuninstall.cjs
+          chmod +x dist/cli.js
+      - name: Create npm-ready package.json
+        shell: bash
+        run: |
+          TAG="${GITHUB_REF##refs/tags/v}"
+          jq 'del(.devDependencies,.scripts.prepare,.scripts.preinstall,.type) |
+              .version = "'$TAG'" |
+              .bin = {council:"cli.js"} |
+              .files = ["cli.js","resolveBinary.cjs","postuninstall.cjs","package.json","README.md","LICENSE"] |
+              .scripts = {"postuninstall": "node postuninstall.cjs"} |
+              .repository = {"type":"git","url":"https://github.com/MrLesk/agents-council"} |
+              .optionalDependencies = {
+                "agents-council-mcp-linux-x64": "'$TAG'",
+                "agents-council-mcp-linux-arm64": "'$TAG'",
+                "agents-council-mcp-darwin-x64": "'$TAG'",
+                "agents-council-mcp-darwin-arm64": "'$TAG'",
+                "agents-council-mcp-windows-x64": "'$TAG'"
+              }' package.json > dist/package.json
+          cp LICENSE README.md dist/ 2>/dev/null || true
+      - uses: actions/setup-node@v6.1.0
+        with:
+          node-version: 24
+      - name: Configure npm for trusted publishing
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install -g npm@11.7.0
+          npm --version
+      - name: Dry run trusted publish
+        run: |
+          cd dist
+          npm publish --access public --dry-run
+      - name: Publish to npm
+        run: |
+          cd dist
+          npm publish --access public
+
+  publish-binaries:
+    needs: [build, npm-publish]
+    strategy:
+      matrix:
+        include:
+          - target: bun-linux-x64-baseline
+            package: agents-council-mcp-linux-x64
+            os: linux
+            cpu: x64
+          - target: bun-linux-arm64
+            package: agents-council-mcp-linux-arm64
+            os: linux
+            cpu: arm64
+          - target: bun-darwin-x64
+            package: agents-council-mcp-darwin-x64
+            os: darwin
+            cpu: x64
+          - target: bun-darwin-arm64
+            package: agents-council-mcp-darwin-arm64
+            os: darwin
+            cpu: arm64
+          - target: bun-windows-x64-baseline
+            package: agents-council-mcp-windows-x64
+            os: win32
+            cpu: x64
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6.0.1
+      - uses: actions/download-artifact@v7.0.0
+        with:
+          name: council-${{ matrix.target }}
+        timeout-minutes: 15
+      - name: Prepare package
+        shell: bash
+        run: |
+          TAG="${GITHUB_REF##refs/tags/v}"
+          mkdir -p pkg
+          if [[ -f council-bin.exe ]]; then
+            mv council-bin.exe pkg/council.exe
+          elif [[ -f council-bin ]]; then
+            mv council-bin pkg/council
+          else
+            echo "Error: No binary found"
+            ls -la
+            exit 1
+          fi
+          cp LICENSE README.md pkg/ 2>/dev/null || true
+          cat <<EOF > pkg/package.json
+          {
+            "name": "${{ matrix.package }}",
+            "version": "${TAG}",
+            "os": ["${{ matrix.os }}"],
+            "cpu": ["${{ matrix.cpu }}"],
+            "files": ["council${{ contains(matrix.target,'windows') && '.exe' || '' }}","package.json","LICENSE"],
+            "repository": {
+              "type": "git",
+              "url": "https://github.com/MrLesk/agents-council"
+            }
+          }
+          EOF
+      - name: Ensure executable permission (non-Windows)
+        if: ${{ !contains(matrix.target,'windows') }}
+        shell: bash
+        run: |
+          chmod +x pkg/council
+      - uses: actions/setup-node@v6.1.0
+        with:
+          node-version: 24
+      - name: Configure npm for trusted publishing
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install -g npm@11.7.0
+          npm --version
+      - name: Dry run platform publish
+        run: |
+          cd pkg
+          npm publish --access public --dry-run
+      - name: Publish platform package
+        run: |
+          cd pkg
+          npm publish --access public
+
+  install-sanity:
+    name: install-sanity-${{ matrix.os }}
+    needs: [publish-binaries, npm-publish]
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/setup-node@v6.1.0
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+      - name: Install and run council (Unix)
+        if: ${{ matrix.os != 'windows-latest' }}
+        shell: bash
+        run: |
+          set -euxo pipefail
+          VERSION="${GITHUB_REF##refs/tags/v}"
+          mkdir sanity && cd sanity
+          npm init -y >/dev/null 2>&1
+          npm i "agents-council-mcp@${VERSION}"
+          output="$(npx council 2>&1 || true)"
+          echo "$output" | grep -q "Startup error"
+      - name: Install and run council (Windows)
+        if: ${{ matrix.os == 'windows-latest' }}
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $Version = $env:GITHUB_REF_NAME.TrimStart('v')
+          mkdir sanity | Out-Null
+          Set-Location sanity
+          npm init -y | Out-Null
+          npm i "agents-council-mcp@$Version"
+          $output = & npx council 2>&1
+          if ($LASTEXITCODE -eq 0) { exit 1 }
+          if ($output -notmatch "Startup error") { exit 1 }
+
+  github-release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v7.0.0
+        with:
+          path: release-assets
+        timeout-minutes: 15
+      - name: Rename binaries for release
+        run: |
+          echo "=== Debug: Downloaded artifacts ==="
+          find release-assets -type f -exec ls -lh {} \;
+          echo "=== Processing artifacts ==="
+          mkdir -p binaries
+          for dir in release-assets/*/; do
+            if [ -d "$dir" ]; then
+              target=$(basename "$dir" | sed 's/council-//')
+              echo "Processing target: $target"
+              echo "Directory contents:"
+              ls -la "$dir"
+              binary=$(find "$dir" -name "council-bin*" -type f)
+              if [ -n "$binary" ]; then
+                echo "Found binary: $binary ($(ls -lh "$binary" | awk '{print $5}'))"
+                if [[ "$target" == *"windows"* ]] && [[ "$binary" == *".exe" ]]; then
+                  cp "$binary" "binaries/council-${target}.exe"
+                  echo "Copied to binaries/council-${target}.exe ($(ls -lh "binaries/council-${target}.exe" | awk '{print $5}'))"
+                else
+                  cp "$binary" "binaries/council-${target}"
+                  echo "Copied to binaries/council-${target} ($(ls -lh "binaries/council-${target}" | awk '{print $5}'))"
+                fi
+              fi
+            fi
+          done
+          echo "=== Final binaries ==="
+          ls -lh binaries/
+      - uses: softprops/action-gh-release@v2.5.0
+        with:
+          files: binaries/*
