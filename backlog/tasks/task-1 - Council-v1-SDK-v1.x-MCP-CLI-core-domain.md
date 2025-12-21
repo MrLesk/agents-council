@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - codex
 created_date: '2025-12-21 11:23'
-updated_date: '2025-12-21 17:27'
+updated_date: '2025-12-21 17:31'
 labels: []
 milestone: Council v1 (stdio)
 dependencies: []
@@ -61,4 +61,6 @@ Subtask 1.4 complete: CouncilServiceImpl logic implemented with cursor-based pol
 Requirement change: reset_session tool removed; request_feedback now resets session state automatically in v1.
 
 Subtask 1.5 complete: MCP stdio adapter wired to CouncilService with three tools; DTO mapping added; zod dependency added; lint/format/typecheck pass.
+
+Subtask 1.6 complete: docs/council.md added with CLI usage, architecture split, v1 tool semantics, SDK requirement, and state path env var.
 <!-- SECTION:NOTES:END -->
