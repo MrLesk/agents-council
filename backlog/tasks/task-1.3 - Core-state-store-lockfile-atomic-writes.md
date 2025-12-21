@@ -1,11 +1,11 @@
 ---
 id: task-1.3
 title: Core state store + lockfile + atomic writes
-status: To Do
+status: Done
 assignee:
   - codex
 created_date: '2025-12-21 11:24'
-updated_date: '2025-12-21 15:17'
+updated_date: '2025-12-21 16:19'
 labels: []
 milestone: Council v1 (stdio)
 dependencies:
@@ -21,16 +21,28 @@ Implement the JSON state store and locking in `src/core/state`, keeping persiste
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 State is persisted with a versioned JSON schema in the configured path.
-- [ ] #2 Lockfile serialization prevents concurrent writes and handles stale locks safely.
-- [ ] #3 Atomic write behavior is in place for state updates.
-- [ ] #4 State path override via environment variable works.
-- [ ] #5 Core state layer contains no MCP-specific logic.
-- [ ] #6 Linting passes (Biome).
-- [ ] #7 Formatting check passes (Biome).
+- [x] #1 State is persisted with a versioned JSON schema in the configured path.
+- [x] #2 Lockfile serialization prevents concurrent writes and handles stale locks safely.
+- [x] #3 Atomic write behavior is in place for state updates.
+- [x] #4 State path override via environment variable works.
+- [x] #5 Core state layer contains no MCP-specific logic.
+- [x] #6 Linting passes (Biome).
+- [x] #7 Formatting check passes (Biome).
 
-- [ ] #8 Type check passes.
+- [x] #8 Type check passes.
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+Plan (subtask 1.3):
+- Extend src/core/state/store.ts to support safe read-modify-write via an update helper.
+- Implement a file-backed store in src/core/state/fileStateStore.ts with default state creation and JSON load/save.
+- Resolve the state path from AGENTS_COUNCIL_STATE_PATH or default to ~/.agents-council/state.json (expand ~), and ensure the parent directory exists.
+- Add lockfile acquisition with retry + stale lock cleanup using mtime and release on completion.
+- Write state updates atomically (temp file + fsync + rename in same directory).
+- Run lint/format/typecheck after changes and fix any issues.
+<!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
 
@@ -41,4 +53,6 @@ References:
 - docs/bun/docs/guides/read-file/exists.md
 - docs/bun/docs/guides/write-file/basic.md
 - docs/bun/docs/runtime/environment-variables.md
+
+Implemented file-backed state store with lockfile + atomic writes in src/core/state/fileStateStore.ts, added update helper to store interface, and resolved state path via AGENTS_COUNCIL_STATE_PATH or ~/.agents-council/state.json. Lint/format/typecheck pass.
 <!-- SECTION:NOTES:END -->
