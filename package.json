@@ -1,0 +1,23 @@
+{
+  "name": "agents-council",
+  "version": "0.1.0",
+  "type": "module",
+  "bin": {
+    "council": "dist/council"
+  },
+  "scripts": {
+    "build": "bun build src/cli/index.ts --compile --outfile dist/council",
+    "lint": "biome lint .",
+    "format": "biome format --write .",
+    "format:check": "biome check --formatter-enabled=true --linter-enabled=false --organize-imports-enabled=false .",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^1.8.3",
+    "@types/bun": "^1.1.0",
+    "typescript": "^5.6.3"
+  }
+}

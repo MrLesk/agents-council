@@ -2,9 +2,10 @@
 id: task-1.3
 title: Core state store + lockfile + atomic writes
 status: To Do
-assignee: []
+assignee:
+  - codex
 created_date: '2025-12-21 11:24'
-updated_date: '2025-12-21 12:54'
+updated_date: '2025-12-21 15:17'
 labels: []
 milestone: Council v1 (stdio)
 dependencies:
