@@ -58,6 +58,15 @@ includes the resolved `agent_name`.
 There is no `reset_session` tool in v1. Each `start_council` resets the session state
 by clearing requests, responses, and participants.
 
+## Initialization instructions
+
+On initialization, the server returns an `instructions` string that summarizes how to use the tools:
+- Use `start_council` to begin a new request when you need feedback.
+- Use `join_council` for first-time entry to fetch the request and responses.
+- Use `get_current_session_data` to poll for new responses; pass the cursor returned to fetch only newer messages.
+- Use `send_response` to post your feedback to the current request.
+- Use `--format/-f` (markdown|json) when starting the server to choose tool text output.
+
 ## Response format
 
 Use `--format` (or `-f`) with `markdown|json` on `council mcp` (default: `markdown`). Markdown responses are

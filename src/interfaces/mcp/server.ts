@@ -33,10 +33,23 @@ type ToolContext = {
   cursor?: string;
 };
 
-const server = new McpServer({
-  name: "agents-council",
-  version: "0.1.0",
-});
+const serverInstructions = [
+  "Use start_council to begin a new request when you need feedback.",
+  "First-time participants should call join_council to fetch the request and responses.",
+  "Use get_current_session_data to poll for new responses; pass the cursor returned to fetch only newer messages.",
+  "Use send_response to post your feedback to the current request.",
+  "Use --format/-f (markdown|json) when starting the server to choose tool text output.",
+].join("\n");
+
+const server = new McpServer(
+  {
+    name: "agents-council",
+    version: "0.1.0",
+  },
+  {
+    instructions: serverInstructions,
+  },
+);
 
 const service = new CouncilServiceImpl(new FileCouncilStateStore());
 let responseFormat: ResponseFormat = "markdown";
