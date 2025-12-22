@@ -13,6 +13,7 @@ Build a Bun + TypeScript CLI (npm package: `agents-council-mcp`, binary: `counci
 - Session creation is implicit in `start_council`, which resets prior session state.
 - Join is implicit in `get_current_session_data`.
 - Single active session; no history; explicit close via `close_council`.
+- Optional `--agent-name/-n` flag sets a default agent name and removes `agent_name` from tool inputs.
 - Non-blocking tool calls with explicit polling boundaries.
 - Shared state at `~/.agents-council/state.json` (configurable override).
 - Bun runtime for execution and compiled distribution.
@@ -72,25 +73,30 @@ JSON root (example structure):
 ```
 
 ## Tool semantics
-- `start_council({ request, agent_name })`
+- `start_council({ request, agent_name? })`
   - Reset any prior session state (clear requests, responses, participants).
   - Create a new session and request, set as current.
+  - Provide `agent_name` unless the server was started with `--agent-name/-n`.
   - Returns `session_id`, `request_id`.
 
-- `join_council({ agent_name })`
+- `join_council({ agent_name? })`
   - Join the current session and return the full session view (same as `get_current_session_data` without a cursor).
+  - Provide `agent_name` unless the server was started with `--agent-name/-n`.
 
-- `get_current_session_data({ agent_name, cursor? })`
+- `get_current_session_data({ cursor? })`
   - Implicitly joins the session (registers/updates participant).
   - Returns the session request and any responses since `cursor` (response cursor token string).
   - Updates participant `last_seen` and cursor markers.
+  - Uses the stored agent name from `start_council`/`join_council` unless `--agent-name/-n` was set.
 
-- `close_council({ agent_name, conclusion })`
+- `close_council({ conclusion })`
   - Marks the current session closed and records a conclusion.
+  - Uses the stored agent name from `start_council`/`join_council` unless `--agent-name/-n` was set.
 
-- `send_response({ agent_name, content })`
+- `send_response({ content })`
   - Appends a response for the current request.
   - Returns ack + current aggregate state summary.
+  - Uses the stored agent name from `start_council`/`join_council` unless `--agent-name/-n` was set.
 
 ## Locking and atomic writes
 - Use a lockfile (e.g., `state.json.lock`) to serialize access.

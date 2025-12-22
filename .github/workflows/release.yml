@@ -28,11 +28,11 @@ jobs:
     env:
       BIN: council-bin${{ contains(matrix.target,'windows') && '.exe' || '' }}
     steps:
-      - uses: actions/checkout@v6.0.1
-      - uses: oven-sh/setup-bun@v2.0.2
+      - uses: actions/checkout@v6
+      - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
-      - uses: actions/cache@v5.0.1
+      - uses: actions/cache@v5
         id: cache
         with:
           path: ~/.bun/install/cache
@@ -73,7 +73,7 @@ jobs:
           mv dist/${{ env.BIN }} ${{ env.BIN }}
           echo "Final binary size:"
           ls -lh ${{ env.BIN }}
-      - uses: actions/upload-artifact@v6.0.0
+      - uses: actions/upload-artifact@v6
         with:
           name: council-${{ matrix.target }}
           path: ${{ env.BIN }}
@@ -82,7 +82,7 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6.0.1
+      - uses: actions/checkout@v6
       - name: Prepare npm package
         shell: bash
         run: |
@@ -109,7 +109,7 @@ jobs:
                 "agents-council-mcp-windows-x64": "'$TAG'"
               }' package.json > dist/package.json
           cp LICENSE README.md dist/ 2>/dev/null || true
-      - uses: actions/setup-node@v6.1.0
+      - uses: actions/setup-node@v6
         with:
           node-version: 24
       - name: Configure npm for trusted publishing
@@ -154,8 +154,8 @@ jobs:
             cpu: x64
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6.0.1
-      - uses: actions/download-artifact@v7.0.0
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v7
         with:
           name: council-${{ matrix.target }}
         timeout-minutes: 15
@@ -192,7 +192,7 @@ jobs:
         shell: bash
         run: |
           chmod +x pkg/council
-      - uses: actions/setup-node@v6.1.0
+      - uses: actions/setup-node@v6
         with:
           node-version: 24
       - name: Configure npm for trusted publishing
@@ -218,7 +218,7 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/setup-node@v6.1.0
+      - uses: actions/setup-node@v6
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org

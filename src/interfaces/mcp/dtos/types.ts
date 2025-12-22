@@ -45,7 +45,7 @@ export type ParticipantDto = {
 
 export type StartCouncilParams = {
   request: string;
-  agent_name: string;
+  agent_name?: string;
 };
 
 export type StartCouncilResponse = {
@@ -56,12 +56,11 @@ export type StartCouncilResponse = {
 };
 
 export type GetCurrentSessionDataParams = {
-  agent_name: string;
   cursor?: string;
 };
 
 export type JoinCouncilParams = {
-  agent_name: string;
+  agent_name?: string;
 };
 
 export type GetCurrentSessionDataResponse = {
@@ -75,7 +74,6 @@ export type GetCurrentSessionDataResponse = {
 };
 
 export type CloseCouncilParams = {
-  agent_name: string;
   conclusion: string;
 };
 
@@ -87,7 +85,6 @@ export type CloseCouncilResponse = {
 };
 
 export type SendResponseParams = {
-  agent_name: string;
   content: string;
 };
 

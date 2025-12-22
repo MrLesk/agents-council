@@ -10,8 +10,9 @@ if (args[0] !== "mcp") {
 }
 
 const format = parseFormat(args.slice(1));
+const agentName = parseAgentName(args.slice(1));
 
-startMcpServer({ format }).catch((error) => {
+startMcpServer({ format, agentName }).catch((error) => {
   console.error("Failed to start MCP server:", error);
   process.exit(1);
 });
@@ -42,4 +43,32 @@ function parseFormat(args: string[]): ResponseFormat {
   }
 
   return format;
+}
+
+function parseAgentName(args: string[]): string | undefined {
+  let agentName: string | undefined;
+
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (arg === "--agent-name" || arg === "-n") {
+      const value = args[index + 1];
+      if (!value) {
+        console.error("Startup error: --agent-name expects a value.");
+        process.exit(1);
+      }
+      agentName = value.trim();
+      index += 1;
+      continue;
+    }
+    if (arg.startsWith("--agent-name=")) {
+      agentName = arg.slice("--agent-name=".length).trim();
+    }
+  }
+
+  if (agentName !== undefined && agentName.length === 0) {
+    console.error("Startup error: --agent-name expects a value.");
+    process.exit(1);
+  }
+
+  return agentName;
 }

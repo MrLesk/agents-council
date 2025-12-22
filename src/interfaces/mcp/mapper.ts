@@ -31,28 +31,30 @@ import type {
   StartCouncilResult,
 } from "../../core/services/council/types";
 
-export function mapStartCouncilInput(params: StartCouncilParams): StartCouncilInput {
+export function mapStartCouncilInput(params: StartCouncilParams & { agent_name: string }): StartCouncilInput {
   return {
     request: params.request,
     agentName: params.agent_name,
   };
 }
 
-export function mapGetCurrentSessionDataInput(params: GetCurrentSessionDataParams): GetCurrentSessionDataInput {
+export function mapGetCurrentSessionDataInput(
+  params: GetCurrentSessionDataParams & { agent_name: string },
+): GetCurrentSessionDataInput {
   return {
     agentName: params.agent_name,
     cursor: params.cursor,
   };
 }
 
-export function mapCloseCouncilInput(params: CloseCouncilParams): CloseCouncilInput {
+export function mapCloseCouncilInput(params: CloseCouncilParams & { agent_name: string }): CloseCouncilInput {
   return {
     agentName: params.agent_name,
     conclusion: params.conclusion,
   };
 }
 
-export function mapSendResponseInput(params: SendResponseParams): SendResponseInput {
+export function mapSendResponseInput(params: SendResponseParams & { agent_name: string }): SendResponseInput {
   return {
     agentName: params.agent_name,
     content: params.content,
@@ -68,9 +70,7 @@ export function mapStartCouncilResponse(result: StartCouncilResult): StartCounci
   };
 }
 
-export function mapGetCurrentSessionDataResponse(
-  result: GetCurrentSessionDataResult,
-): GetCurrentSessionDataResponse {
+export function mapGetCurrentSessionDataResponse(result: GetCurrentSessionDataResult): GetCurrentSessionDataResponse {
   return {
     agent_name: result.agentName,
     session_id: result.session?.id ?? null,

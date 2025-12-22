@@ -38,7 +38,7 @@ const serverInstructions = [
   "First-time participants should call join_council to fetch the request and responses.",
   "Use get_current_session_data to poll for new responses; pass the cursor returned to fetch only newer messages.",
   "Use send_response to post your feedback to the current request.",
-  "Use --format/-f (markdown|json) when starting the server to choose tool text output.",
+  "Use close_council to end the current session with a conclusion.",
 ].join("\n");
 
 const server = new McpServer(
@@ -53,6 +53,8 @@ const server = new McpServer(
 
 const service = new CouncilServiceImpl(new FileCouncilStateStore());
 let responseFormat: ResponseFormat = "markdown";
+let agentName: string | null = null;
+let toolsRegistered = false;
 
 const registerTool = <TParams>(
   name: string,
@@ -66,127 +68,191 @@ const registerTool = <TParams>(
   );
 };
 
-const startCouncilSchema: z.ZodTypeAny = z.object({
-  request: z.string().min(1),
-  agent_name: z.string().min(1),
-});
-
-const joinCouncilSchema: z.ZodTypeAny = z.object({
-  agent_name: z.string().min(1),
-});
-
-const getCurrentSessionDataSchema: z.ZodTypeAny = z.object({
-  agent_name: z.string().min(1),
-  cursor: z.string().min(1).optional(),
-});
-
-const sendResponseSchema: z.ZodTypeAny = z.object({
-  agent_name: z.string().min(1),
-  content: z.string().min(1),
-});
-
-const closeCouncilSchema: z.ZodTypeAny = z.object({
-  agent_name: z.string().min(1),
-  conclusion: z.string().min(1),
-});
-
-registerTool<StartCouncilParams>(
-  "start_council",
-  {
-    description:
-      "Start a new council session and request responses. Provide an agent_name; the server may append #1, #2, etc. if the name is already taken. Reuse the returned agent_name on subsequent calls. Text format is set via the server --format/-f flag (markdown|json).",
-    inputSchema: startCouncilSchema,
-  },
-  async (params) => {
-    try {
-      const result = await service.startCouncil(mapStartCouncilInput(params));
-      const response = mapStartCouncilResponse(result);
-      return toolOk("start_council", response);
-    } catch (error) {
-      return toolError(error);
-    }
-  },
-);
-
-registerTool<GetCurrentSessionDataParams>(
-  "get_current_session_data",
-  {
-    description:
-      "Get session data for the current council session since the last cursor. Use the server-assigned agent_name. Text format is set via the server --format/-f flag (markdown|json).",
-    inputSchema: getCurrentSessionDataSchema,
-  },
-  async (params) => {
-    try {
-      const result = await service.getCurrentSessionData(mapGetCurrentSessionDataInput(params));
-      const response = mapGetCurrentSessionDataResponse(result);
-      return toolOk("get_current_session_data", response, { cursor: params.cursor });
-    } catch (error) {
-      return toolError(error);
-    }
-  },
-);
-
-registerTool<JoinCouncilParams>(
-  "join_council",
-  {
-    description:
-      "Join the current council session and fetch session data. Use the server-assigned agent_name. Text format is set via the server --format/-f flag (markdown|json).",
-    inputSchema: joinCouncilSchema,
-  },
-  async (params) => {
-    try {
-      const result = await service.getCurrentSessionData(
-        mapGetCurrentSessionDataInput({ agent_name: params.agent_name }),
-      );
-      const response = mapGetCurrentSessionDataResponse(result);
-      return toolOk("join_council", response, { cursor: undefined });
-    } catch (error) {
-      return toolError(error);
-    }
-  },
-);
-
-registerTool<CloseCouncilParams>(
-  "close_council",
-  {
-    description:
-      "Close the current council session with a conclusion. Use the server-assigned agent_name. Text format is set via the server --format/-f flag (markdown|json).",
-    inputSchema: closeCouncilSchema,
-  },
-  async (params) => {
-    try {
-      const result = await service.closeCouncil(mapCloseCouncilInput(params));
-      const response = mapCloseCouncilResponse(result);
-      return toolOk("close_council", response);
-    } catch (error) {
-      return toolError(error);
-    }
-  },
-);
-
-registerTool<SendResponseParams>(
-  "send_response",
-  {
-    description:
-      "Send a response for the current session. Use the server-assigned agent_name. Text format is set via the server --format/-f flag (markdown|json).",
-    inputSchema: sendResponseSchema,
-  },
-  async (params) => {
-    try {
-      const result = await service.sendResponse(mapSendResponseInput(params));
-      const response = mapSendResponseResponse(result);
-      return toolOk("send_response", response);
-    } catch (error) {
-      return toolError(error);
-    }
-  },
-);
-
-export async function startMcpServer(options: { format?: ResponseFormat } = {}): Promise<void> {
-  responseFormat = options.format ?? "markdown";
+export async function startMcpServer(options: { format?: ResponseFormat; agentName?: string } = {}): Promise<void> {
+  const format = options.format ?? "markdown";
+  if (format !== "markdown" && format !== "json") {
+    throw new Error("Unsupported response format. Use 'markdown' or 'json'.");
+  }
+  responseFormat = format;
+  const configuredAgentName = options.agentName?.trim() || null;
+  agentName = configuredAgentName;
+  registerTools({ hasDefaultAgentName: configuredAgentName !== null });
   const transport = new StdioServerTransport();
   await server.connect(transport);
   console.error("Council MCP server running on stdio");
+}
+
+function registerTools(options: { hasDefaultAgentName: boolean }): void {
+  if (toolsRegistered) {
+    return;
+  }
+  toolsRegistered = true;
+
+  const startCouncilSchema: z.ZodTypeAny = options.hasDefaultAgentName
+    ? z.object({ request: z.string().min(1) }).strict()
+    : z
+        .object({
+          request: z.string().min(1),
+          agent_name: z.string().min(1),
+        })
+        .strict();
+
+  const joinCouncilSchema: z.ZodTypeAny = options.hasDefaultAgentName
+    ? z.object({}).strict()
+    : z
+        .object({
+          agent_name: z.string().min(1),
+        })
+        .strict();
+
+  const getCurrentSessionDataSchema: z.ZodTypeAny = z
+    .object({
+      cursor: z.string().min(1).optional(),
+    })
+    .strict();
+
+  const sendResponseSchema: z.ZodTypeAny = z
+    .object({
+      content: z.string().min(1),
+    })
+    .strict();
+
+  const closeCouncilSchema: z.ZodTypeAny = z
+    .object({
+      conclusion: z.string().min(1),
+    })
+    .strict();
+
+  const startCouncilDescription = options.hasDefaultAgentName
+    ? "Start a new council session and submit your request. Other council members will reply shortly after."
+    : "Start a new council session and submit your request. Other council members will reply shortly after. Provide agent_name to identify yourself; the server may append #1, #2, etc. if the name is already taken.";
+
+  registerTool<StartCouncilParams>(
+    "start_council",
+    {
+      description: startCouncilDescription,
+      inputSchema: startCouncilSchema,
+    },
+    async (params) => {
+      try {
+        const resolvedName = options.hasDefaultAgentName ? agentName : params.agent_name?.trim();
+        if (!resolvedName) {
+          throw new Error(
+            options.hasDefaultAgentName
+              ? "Agent name not set for start_council."
+              : "agent_name is required for start_council.",
+          );
+        }
+        const result = await service.startCouncil(
+          mapStartCouncilInput({ request: params.request, agent_name: resolvedName }),
+        );
+        const response = mapStartCouncilResponse(result);
+        agentName = response.agent_name;
+        return toolOk("start_council", response);
+      } catch (error) {
+        return toolError(error);
+      }
+    },
+  );
+
+  registerTool<GetCurrentSessionDataParams>(
+    "get_current_session_data",
+    {
+      description: "Get the current session request and responses since the last cursor.",
+      inputSchema: getCurrentSessionDataSchema,
+    },
+    async (params) => {
+      try {
+        const resolvedName = agentName;
+        if (!resolvedName) {
+          throw new Error("Agent name not set for get_current_session_data. Call start_council or join_council first.");
+        }
+        const result = await service.getCurrentSessionData(
+          mapGetCurrentSessionDataInput({ cursor: params.cursor, agent_name: resolvedName }),
+        );
+        const response = mapGetCurrentSessionDataResponse(result);
+        return toolOk("get_current_session_data", response, { cursor: params.cursor });
+      } catch (error) {
+        return toolError(error);
+      }
+    },
+  );
+
+  const joinCouncilDescription = options.hasDefaultAgentName
+    ? "Join the current council session and fetch the request and responses."
+    : "Join the current council session and fetch the request and responses. Provide agent_name to identify yourself; the server may append #1, #2, etc. if the name is already taken.";
+
+  registerTool<JoinCouncilParams>(
+    "join_council",
+    {
+      description: joinCouncilDescription,
+      inputSchema: joinCouncilSchema,
+    },
+    async (params) => {
+      try {
+        const resolvedName = options.hasDefaultAgentName ? agentName : params.agent_name?.trim();
+        if (!resolvedName) {
+          throw new Error(
+            options.hasDefaultAgentName
+              ? "Agent name not set for join_council."
+              : "agent_name is required for join_council.",
+          );
+        }
+        const result = await service.getCurrentSessionData(mapGetCurrentSessionDataInput({ agent_name: resolvedName }));
+        const response = mapGetCurrentSessionDataResponse(result);
+        agentName = response.agent_name;
+        return toolOk("join_council", response, { cursor: undefined });
+      } catch (error) {
+        return toolError(error);
+      }
+    },
+  );
+
+  registerTool<CloseCouncilParams>(
+    "close_council",
+    {
+      description: "Close the current council session with a conclusion.",
+      inputSchema: closeCouncilSchema,
+    },
+    async (params) => {
+      try {
+        const resolvedName = agentName;
+        if (!resolvedName) {
+          throw new Error("Agent name not set for close_council. Call start_council or join_council first.");
+        }
+        const result = await service.closeCouncil(
+          mapCloseCouncilInput({ conclusion: params.conclusion, agent_name: resolvedName }),
+        );
+        const response = mapCloseCouncilResponse(result);
+        return toolOk("close_council", response);
+      } catch (error) {
+        return toolError(error);
+      }
+    },
+  );
+
+  registerTool<SendResponseParams>(
+    "send_response",
+    {
+      description: "Send a response for the current session.",
+      inputSchema: sendResponseSchema,
+    },
+    async (params) => {
+      try {
+        const resolvedName = agentName;
+        if (!resolvedName) {
+          throw new Error("Agent name not set for send_response. Call start_council or join_council first.");
+        }
+        const result = await service.sendResponse(
+          mapSendResponseInput({ content: params.content, agent_name: resolvedName }),
+        );
+        const response = mapSendResponseResponse(result);
+        return toolOk("send_response", response);
+      } catch (error) {
+        return toolError(error);
+      }
+    },
+  );
 }
 
 function toolOk<T extends Record<string, unknown>>(
@@ -233,7 +299,7 @@ function formatToolText(toolName: ToolName, payload: unknown, context: ToolConte
     case "get_current_session_data":
       return formatGetCurrentSessionData(payload as GetCurrentSessionDataResponse, context);
     case "join_council":
-      return formatGetCurrentSessionData(payload as GetCurrentSessionDataResponse, context);
+      return formatJoinCouncil(payload as GetCurrentSessionDataResponse);
     case "close_council":
       return formatCloseCouncil(payload as CloseCouncilResponse);
     case "send_response":
@@ -247,8 +313,23 @@ function formatToolText(toolName: ToolName, payload: unknown, context: ToolConte
 
 function formatStartCouncil(response: StartCouncilResponse): string {
   return [
-    "Council request received. Check again later for responses.",
+    "Your request is received. Return anon for replies, and look again in a few seconds.",
     `Your assigned name is: ${response.agent_name}`,
+  ].join("\n");
+}
+
+function formatJoinCouncil(response: GetCurrentSessionDataResponse): string {
+  const request = response.request;
+  const requestAuthor = request?.created_by ?? "none";
+  const requestContent = request?.content ?? "none";
+
+  return [
+    `Welcome to this council session ${response.agent_name}.`,
+    `We are gathered to weigh a matter set forth by ${requestAuthor}.`,
+    "Request:",
+    requestContent,
+    "---",
+    "What say you, and with haste?",
   ].join("\n");
 }
 
@@ -262,12 +343,10 @@ function formatGetCurrentSessionData(response: GetCurrentSessionDataResponse, co
     const conclusionAuthor = conclusion?.author ?? "none";
     const conclusionContent = conclusion?.content ?? "none";
     return [
-      `Your assigned name is: ${response.agent_name}`,
-      "---",
-      `Council session started by ${requestAuthor}`,
+      `The council was convened by ${requestAuthor}.`,
       `Request: ${requestContent}`,
       "---",
-      `Council session ended by ${conclusionAuthor}`,
+      `The council is ended, spoken by ${conclusionAuthor}.`,
       `Conclusion: ${conclusionContent}`,
     ].join("\n");
   }
@@ -275,9 +354,7 @@ function formatGetCurrentSessionData(response: GetCurrentSessionDataResponse, co
   const cursorLabel = context.cursor ?? "start";
   const cursorToken = response.next_cursor ?? "none";
   const lines = [
-    `Your assigned name is: ${response.agent_name}`,
-    "---",
-    `Council session started by ${requestAuthor}`,
+    `The council was convened by ${requestAuthor}.`,
     `Request: ${requestContent}`,
     "---",
     `Messages (from ${cursorLabel}):`,
@@ -290,15 +367,15 @@ function formatGetCurrentSessionData(response: GetCurrentSessionDataResponse, co
     lines.push("---");
   });
 
-  lines.push("There are no other responses for now. You can query again later.");
-  lines.push(`If you want to skip these responses use the cursor to get only new responses: ${cursorToken}`);
+  lines.push("No further replies are heard for now. Return anon for more.");
+  lines.push(`To hear only new replies, use the cursor: ${cursorToken}`);
   return lines.join("\n");
 }
 
 function formatCloseCouncil(response: CloseCouncilResponse): string {
-  return ["Council session closed.", `Your assigned name is: ${response.agent_name}`].join("\n");
+  return "The council is ended, and the matter is sealed.";
 }
 
 function formatSendResponse(response: SendResponseResponse): string {
-  return ["Response recorded.", `Your assigned name is: ${response.agent_name}`].join("\n");
+  return ["Your reply is set down.", `Your assigned name is: ${response.agent_name}`].join("\n");
 }
