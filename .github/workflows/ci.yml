@@ -85,8 +85,9 @@ jobs:
             chmod +x "$FILE"
           fi
           if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
-            powershell -command "$out = & .\\$FILE 2>&1; if ($LASTEXITCODE -eq 0) { exit 1 }; if ($out -notmatch 'Startup error') { exit 1 }"
+            powershell -command ".\\$FILE --version"
+            powershell -command ".\\$FILE --help"
           else
-            output=$("./$FILE" 2>&1 || true)
-            echo "$output" | grep -q "Startup error"
+            "./$FILE" --version
+            "./$FILE" --help
           fi

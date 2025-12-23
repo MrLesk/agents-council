@@ -231,8 +231,8 @@ jobs:
           mkdir sanity && cd sanity
           npm init -y >/dev/null 2>&1
           npm i "agents-council-mcp@${VERSION}"
-          output="$(npx council 2>&1 || true)"
-          echo "$output" | grep -q "Startup error"
+          ./node_modules/.bin/council --version
+          ./node_modules/.bin/council --help
       - name: Install and run council (Windows)
         if: ${{ matrix.os == 'windows-latest' }}
         shell: pwsh
@@ -243,9 +243,8 @@ jobs:
           Set-Location sanity
           npm init -y | Out-Null
           npm i "agents-council-mcp@$Version"
-          $output = & npx council 2>&1
-          if ($LASTEXITCODE -eq 0) { exit 1 }
-          if ($output -notmatch "Startup error") { exit 1 }
+          & .\node_modules\.bin\council.cmd --version
+          & .\node_modules\.bin\council.cmd --help
 
   github-release:
     needs: build

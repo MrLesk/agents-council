@@ -1,7 +1,7 @@
 ---
 id: task-8
 title: Adjust join_council markdown response to new welcome format
-status: In Progress
+status: Done
 assignee:
   - codex
 created_date: '2025-12-21 22:32'
