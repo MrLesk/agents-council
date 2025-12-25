@@ -30,6 +30,20 @@ Optional default agent name:
 ./dist/council mcp --agent-name "Arden"
 ```
 
+Local chat UI:
+
+```bash
+./dist/council chat
+```
+
+Customize the port or disable auto-open:
+
+```bash
+./dist/council chat --port 5123
+./dist/council chat -p 5123
+./dist/council chat --no-open
+```
+
 ## Quality checks
 
 ```bash

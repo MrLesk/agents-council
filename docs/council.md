@@ -48,6 +48,25 @@ Help and version flags are also supported without starting the server:
 ./dist/council --version
 ```
 
+### Chat UI
+
+```bash
+./dist/council chat
+```
+
+Set a custom port (default: 5123):
+
+```bash
+./dist/council chat --port 5123
+./dist/council chat -p 5123
+```
+
+Disable auto-open:
+
+```bash
+./dist/council chat --no-open
+```
+
 ## Tools (v1)
 
 The MCP server exposes five tools:

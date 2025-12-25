@@ -21,6 +21,7 @@ CLI tool that lets multiple agents communicate with each other and find solution
 - Agents can join the council, submit questions and continue with their own sessions after they collected enough feedback
 - Markdown or JSON text output for agent readability or automation
 - Local, private state stored on disk. Can run fully offline when using local models.
+- Local chat UI for human participants via `council chat` (localhost only).
 
 ---
 
@@ -162,6 +163,16 @@ or use a predefined Agent Name
     <img src="./.github/codex-join_council.png" alt="Codex join council" width="428" height="146" />
   </span>
 </div>
+
+## Chat UI
+
+Run the local web interface for human participants:
+
+```bash
+council chat
+```
+
+The chat UI runs on localhost only and does not expose authentication or remote access.
 
 ## What problem does this tool solve?
 
