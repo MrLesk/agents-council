@@ -17,7 +17,6 @@ import {
 } from "./mapper";
 import type {
   CloseCouncilParams,
-  CloseCouncilResponse,
   GetCurrentSessionDataParams,
   GetCurrentSessionDataResponse,
   JoinCouncilParams,

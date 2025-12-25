@@ -75,42 +75,27 @@ export class CouncilServiceImpl implements CouncilService {
   }
 
   async getCurrentSessionData(input: GetCurrentSessionDataInput): Promise<GetCurrentSessionDataResult> {
-    return this.store.update((state) => {
-      const now = nowIso();
-      const { agentName } = resolveAgentName(state.participants, input.agentName, {
-        allowReuse: true,
-      });
-      const effectiveCursor = input.cursor ?? null;
-      const request = getCurrentRequest(state);
-      const feedback = sliceAfterId(state.feedback, effectiveCursor);
-      const lastFeedback = feedback.at(-1);
-      const nextCursor = lastFeedback ? lastFeedback.id : effectiveCursor;
-
-      const { participants, participant } = updateParticipant(state.participants, agentName, now, (candidate) => ({
-        ...candidate,
-        lastSeen: now,
-        lastRequestSeen: request ? request.id : candidate.lastRequestSeen,
-        lastFeedbackSeen: nextCursor,
-      }));
-
-      const nextState: CouncilState = {
-        ...state,
-        participants,
-      };
-
-      return {
-        state: nextState,
-        result: {
-          agentName: participant.agentName,
-          session: state.session,
-          request,
-          feedback,
-          participant,
-          nextCursor,
-          state: nextState,
-        },
-      };
+    const state = await this.store.load();
+    const now = nowIso();
+    const { agentName } = resolveAgentName(state.participants, input.agentName, {
+      allowReuse: true,
     });
+    const { nextState, participant, request, feedback, nextCursor } = buildSessionData(
+      state,
+      agentName,
+      input.cursor,
+      now,
+    );
+
+    return {
+      agentName: participant.agentName,
+      session: state.session,
+      request,
+      feedback,
+      participant,
+      nextCursor,
+      state: nextState,
+    };
   }
 
   async closeCouncil(input: CloseCouncilInput): Promise<CloseCouncilResult> {
@@ -235,6 +220,43 @@ function getCurrentRequest(state: CouncilState): CouncilRequest | null {
   }
 
   return state.requests.find((request) => request.id === currentId) ?? null;
+}
+
+function buildSessionData(
+  state: CouncilState,
+  agentName: string,
+  cursor: string | undefined,
+  now: string,
+): {
+  nextState: CouncilState;
+  participant: CouncilParticipant;
+  request: CouncilRequest | null;
+  feedback: CouncilFeedback[];
+  nextCursor: string | null;
+} {
+  const effectiveCursor = cursor ?? null;
+  const request = getCurrentRequest(state);
+  const feedback = sliceAfterId(state.feedback, effectiveCursor);
+  const lastFeedback = feedback.at(-1);
+  const nextCursor = lastFeedback ? lastFeedback.id : effectiveCursor;
+
+  const { participants, participant } = updateParticipant(state.participants, agentName, now, (candidate) => ({
+    ...candidate,
+    lastSeen: now,
+    lastRequestSeen: request ? request.id : candidate.lastRequestSeen,
+    lastFeedbackSeen: nextCursor,
+  }));
+
+  return {
+    nextState: {
+      ...state,
+      participants,
+    },
+    participant,
+    request,
+    feedback,
+    nextCursor,
+  };
 }
 
 function sliceAfterId<T extends { id: string }>(items: T[], lastSeenId: string | null): T[] {

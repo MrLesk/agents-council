@@ -84,9 +84,9 @@ JSON root (example structure):
   - Provide `agent_name` unless the server was started with `--agent-name/-n`.
 
 - `get_current_session_data({ cursor? })`
-  - Implicitly joins the session (registers/updates participant).
+  - Loads fresh state from the store (read-only, no writes).
   - Returns the session request and any responses since `cursor` (response cursor token string).
-  - Updates participant `last_seen` and cursor markers.
+  - State changes from other participants are detected automatically via file watch.
   - Uses the stored agent name from `start_council`/`join_council` unless `--agent-name/-n` was set.
 
 - `close_council({ conclusion })`

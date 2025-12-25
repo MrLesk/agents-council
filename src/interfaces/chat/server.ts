@@ -4,6 +4,7 @@ import { CouncilServiceImpl } from "../../core/services/council";
 import { FileCouncilStateStore } from "../../core/state/fileStateStore";
 import type { CouncilStateWatcher } from "../../core/state/watcher";
 import { watchCouncilState } from "../../core/state/watcher";
+import chatUi from "./ui/index.html";
 import {
   mapCloseCouncilInput,
   mapCloseCouncilResponse,
@@ -38,7 +39,6 @@ export type ChatServer = {
 const service = new CouncilServiceImpl(new FileCouncilStateStore());
 const STATE_TOPIC = "council-state";
 const STATE_CHANGED_EVENT = JSON.stringify({ type: "state-changed" });
-
 export function startChatServer(options: ChatServerOptions): ChatServer {
   const hostname = options.hostname ?? "127.0.0.1";
   const port = options.port;
@@ -49,6 +49,9 @@ export function startChatServer(options: ChatServerOptions): ChatServer {
     server = Bun.serve({
       hostname,
       port,
+      routes: {
+        "/": chatUi,
+      },
       async fetch(req, bunServer) {
         try {
           const url = new URL(req.url);
@@ -74,12 +77,6 @@ export function startChatServer(options: ChatServerOptions): ChatServer {
               default:
                 return jsonError(404, "Not found.");
             }
-          }
-
-          if (req.method === "GET" && url.pathname === "/") {
-            return new Response("Agents Council chat UI is not configured yet.", {
-              headers: { "content-type": "text/plain; charset=utf-8" },
-            });
           }
 
           return jsonError(404, "Not found.");

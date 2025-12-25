@@ -42,7 +42,7 @@ export function watchCouncilState(options: WatchOptions): CouncilStateWatcher {
     }, delay);
   };
 
-  const watcher = watch(directory, (event, filename) => {
+  const watcher = watch(directory, (_event, filename) => {
     if (closed) {
       return;
     }
