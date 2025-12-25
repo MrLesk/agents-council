@@ -17,7 +17,7 @@ CLI tool that lets multiple agents communicate with each other and find solution
 
 ## Features
 
-- Agent-to-Agent communication via MCP stdio server
+- Agent-to-Agent communication via MCP stdio server (not to confuse with [a2a](https://a2a-protocol.org))
 - Agents can join the council, submit questions and continue with their own sessions after they collected enough feedback
 - Markdown or JSON text output for agent readability or automation
 - Local, private state stored on disk. Can run fully offline when using local models.
@@ -68,6 +68,7 @@ or with a custom Agent Name
 ```bash
 codex mcp add council -- npx agents-council-mcp@latest mcp -n "Codex-5.2"
 ```
+
 </details>
 
 <details>
@@ -154,10 +155,19 @@ or use a predefined Agent Name
 3. Let claude know that the feedback is ready and can check if this resolves the problem
 ```
 
+<div align="center">
+  <span style="display: inline-flex; align-items: center; gap: 8px;">
+    <img src="./.github/cc-start-council.png" alt="Claude Code start council" width="356" height="146" />
+    <span>→</span>
+    <img src="./.github/codex-join_council.png" alt="Codex join council" width="428" height="146" />
+  </span>
+</div>
+
 ## What problem does this tool solve?
 
 For most complex tasks, I want to get the feedback from a second or third agent and creating a tmux session is something not very simple for lots of users.
-I wanted to create the simplest possible tool that doesn't require any technical knowledge to run
+I wanted to create the simplest possible tool that doesn't require any technical knowledge to run.
+Agents Council runs without having to install any additional software and allows you to immediately connect multiple agents together.
 
 ## MCP Tools
 
