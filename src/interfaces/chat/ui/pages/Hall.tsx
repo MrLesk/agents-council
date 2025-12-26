@@ -39,7 +39,7 @@ export function Hall({ name, council, onNameChange }: HallProps) {
 
   const sessionLabel =
     sessionStatus === "none" ? "The chamber is quiet" : sessionStatus === "active" ? "In session" : "Concluded";
-  const signalLabel = connection === "listening" ? "Connected" : connection === "connecting" ? "Reaching out..." : "Lost";
+  const signalLabel = connection === "listening" ? "Connected" : "Lost";
 
   const handleStart = async () => {
     const success = await start(name, requestDraft);
@@ -84,9 +84,7 @@ export function Hall({ name, council, onNameChange }: HallProps) {
 
       {connection !== "listening" ? (
         <output className={`status-banner status-banner-${connection}`}>
-          {connection === "connecting"
-            ? "Reaching out to the council..."
-            : "Connection lost. Attempting to rejoin..."}
+          Connection lost. Attempting to rejoin...
         </output>
       ) : null}
 

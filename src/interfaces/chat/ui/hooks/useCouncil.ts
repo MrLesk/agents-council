@@ -10,7 +10,7 @@ import {
 } from "../api";
 import type { CouncilStateDto, FeedbackDto, RequestDto } from "../types";
 
-export type ConnectionStatus = "connecting" | "listening" | "offline";
+export type ConnectionStatus = "listening" | "offline";
 
 export type SessionStatus = "active" | "closed" | "none";
 
@@ -40,7 +40,7 @@ export type CouncilContext = {
 export function useCouncil(name: string | null): CouncilContext {
   const [state, setState] = useState<CouncilStateDto | null>(null);
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
-  const [connection, setConnection] = useState<ConnectionStatus>("connecting");
+  const [connection, setConnection] = useState<ConnectionStatus>("offline");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -113,7 +113,6 @@ export function useCouncil(name: string | null): CouncilContext {
     const _attempt = wsAttempt;
     void _attempt;
 
-    setConnection("connecting");
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
     const ws = new WebSocket(wsUrl);
 
@@ -129,7 +128,6 @@ export function useCouncil(name: string | null): CouncilContext {
       setConnection("offline");
       reconnectTimer = setTimeout(() => {
         reconnectTimer = null;
-        setConnection("connecting");
         setWsAttempt((attempt) => attempt + 1);
       }, 1500);
     };

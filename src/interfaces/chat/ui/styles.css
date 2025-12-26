@@ -131,10 +131,6 @@ body::before {
   border-color: rgba(140, 59, 46, 0.6);
 }
 
-.status-connecting {
-  color: var(--ember);
-  border-color: rgba(216, 138, 71, 0.6);
-}
 
 .status-banner {
   padding: 10px 16px;
@@ -146,10 +142,6 @@ body::before {
   text-align: center;
 }
 
-.status-banner-connecting {
-  color: var(--ember);
-  border-color: rgba(216, 138, 71, 0.6);
-}
 
 .status-banner-offline {
   color: var(--crimson);
