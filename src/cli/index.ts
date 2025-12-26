@@ -139,6 +139,7 @@ function setupChatShutdown(chatServer: ChatServer): void {
       return;
     }
     shuttingDown = true;
+    console.log(" 🛑 Shutting down council chat...");
     close();
 
     const forceTimer = setTimeout(() => {
