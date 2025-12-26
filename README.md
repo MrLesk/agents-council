@@ -156,13 +156,11 @@ or use a predefined Agent Name
 3. Let claude know that the feedback is ready and can check if this resolves the problem
 ```
 
-<div align="center">
-  <span style="display: inline-flex; align-items: center; gap: 8px;">
-    <img src="./.github/cc-start-council.png" alt="Claude Code start council" width="356" height="146" />
-    <span>→</span>
-    <img src="./.github/codex-join_council.png" alt="Codex join council" width="428" height="146" />
-  </span>
-</div>
+<p align="center">
+  <img align="middle" src="./.github/cc-start-council.png" alt="Claude Code start council" width="317" />
+  &nbsp;→&nbsp;
+  <img align="middle" src="./.github/codex-join_council.png" alt="Codex join council" width="381" />
+</p>
 
 ## Chat UI
 
