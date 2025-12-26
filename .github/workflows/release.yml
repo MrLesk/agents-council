@@ -230,12 +230,14 @@ jobs:
           VERSION="${GITHUB_REF##refs/tags/v}"
           mkdir sanity && cd sanity
           npm init -y >/dev/null 2>&1
-          for attempt in 1 2 3; do
-            if npm i "agents-council@${VERSION}"; then
+          for attempt in 1 2 3 4 5; do
+            rm -rf node_modules package-lock.json 2>/dev/null || true
+            npm i "agents-council@${VERSION}"
+            if ./node_modules/.bin/council --version; then
               break
             fi
-            echo "Attempt $attempt failed, retrying in 10s..."
-            sleep 10
+            echo "Attempt $attempt: binary not ready, retrying in 15s..."
+            sleep 15
           done
           ./node_modules/.bin/council --version
           ./node_modules/.bin/council --help
@@ -248,18 +250,17 @@ jobs:
           mkdir sanity | Out-Null
           Set-Location sanity
           npm init -y | Out-Null
-          $installed = $false
-          for ($attempt = 1; $attempt -le 3; $attempt++) {
+          for ($attempt = 1; $attempt -le 5; $attempt++) {
+            Remove-Item -Recurse -Force node_modules, package-lock.json -ErrorAction SilentlyContinue
+            npm i "agents-council@$Version"
             try {
-              npm i "agents-council@$Version"
-              $installed = $true
+              & .\node_modules\.bin\council.cmd --version
               break
             } catch {
-              Write-Host "Attempt $attempt failed, retrying in 10s..."
-              Start-Sleep -Seconds 10
+              Write-Host "Attempt $attempt: binary not ready, retrying in 15s..."
+              Start-Sleep -Seconds 15
             }
           }
-          if (-not $installed) { throw "Failed to install after 3 attempts" }
           & .\node_modules\.bin\council.cmd --version
           & .\node_modules\.bin\council.cmd --help
 
