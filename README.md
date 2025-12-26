@@ -224,16 +224,16 @@ AGENTS_COUNCIL_STATE_PATH=/path/to/state.json
 
 ## Roadmap
 
-- [x] v0.1.0 - MCP Council
-- [ ] v0.2.0 - Chat UI
-- [ ] v0.3.0 - Summon Claude
-- [ ] v0.4.0 - Summon Codex
-- [ ] v0.5.0 - Summon Gemini
-- [ ] v0.6.0 - Multiple council sessions in parallel
-- [ ] v0.7.0 - Connect to external LLMs via API Keys
-- [ ] v0.8.0 - Agents can summon user via telegram
-- [ ] v0.9.0 - Agents can summon user via slack
-- [ ] v0.9.0 - Agents can summon user via whatsapp
+- [x] v0.1 - MCP Council
+- [x] v0.2 - Chat UI
+- [ ] v0.3 - Summon Claude
+- [ ] v0.4 - Summon Codex
+- [ ] v0.5 - Summon Gemini
+- [ ] v0.6 - Multiple council sessions in parallel
+- [ ] v0.7 - Connect to external LLMs via API Keys
+- [ ] v0.8 - Agents can summon user via telegram
+- [ ] v0.9 - Agents can summon user via slack
+- [ ] v0.9 - Agents can summon user via whatsapp
 - [ ] v Next - Submit your idea
 
 ## Development
