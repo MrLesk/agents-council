@@ -16,7 +16,7 @@ bun install
 Global install (if published):
 
 ```bash
-npm install -g agents-council-mcp
+npm install -g agents-council
 ```
 
 ## Build

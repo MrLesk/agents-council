@@ -1,13 +1,13 @@
 # Plan
 
-Build a Bun + TypeScript CLI (npm package: `agents-council-mcp`, binary: `council`) that exposes an MCP stdio server through `council mcp`. The MCP interface must use the TypeScript MCP SDK v1.x only (no 2.x). Core domain logic lives in `src/core` and is consumed by the MCP interface layer.
+Build a Bun + TypeScript CLI (npm package: `agents-council`, binary: `council`) that exposes an MCP stdio server through `council mcp`. The MCP interface must use the TypeScript MCP SDK v1.x only (no 2.x). Core domain logic lives in `src/core` and is consumed by the MCP interface layer.
 
 ## Requirements
 - Use `@modelcontextprotocol/sdk` v1.x (do not use SDK 2.x).
 - MCP stdio transport via the SDK.
 - CLI entry: `council mcp` starts the stdio MCP server.
 - Running `council` (without `mcp`) prints a short usage message and exits 0.
-- NPM package name is `agents-council-mcp`; binary name is `council`.
+- NPM package name is `agents-council`; binary name is `council`.
 - Domain-driven structure: `src/core` contains domain types, services, and state. No business logic in MCP layer.
 - Tools only: `start_council`, `join_council`, `get_current_session_data`, `close_council`, `send_response`.
 - Session creation is implicit in `start_council`, which resets prior session state.

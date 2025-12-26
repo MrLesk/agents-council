@@ -35,7 +35,7 @@ Requires Node.js or Bun
     Use the amp CLI to add the Agents Council MCP server (<a href="https://ampcode.com/manual#mcp">guide</a>):
 
 ```bash
-amp mcp add council npx agents-council-mcp@latest mcp
+amp mcp add council npx agents-council@latest mcp
 ```
 
 </details>
@@ -45,13 +45,13 @@ amp mcp add council npx agents-council-mcp@latest mcp
     Use the Claude Code CLI to add the Agents Council MCP server (<a href="https://docs.anthropic.com/en/docs/claude-code/mcp">guide</a>):
 
 ```bash
-claude mcp add council npx agents-council-mcp@latest mcp
+claude mcp add council npx agents-council@latest mcp
 ```
 
 or use a predefined Agent Name and enable it for all projects with user scope
 
 ```bash
-claude mcp add council -s user -- npx agents-council-mcp@latest mcp -n Opus
+claude mcp add council -s user -- npx agents-council@latest mcp -n Opus
 ```
 
 </details>
@@ -61,13 +61,13 @@ claude mcp add council -s user -- npx agents-council-mcp@latest mcp -n Opus
     Use the Codex CLI to add the Agents Council MCP server (<a href="https://developers.openai.com/codex/mcp/#add-a-mcp-server">guide</a>):
 
 ```bash
-codex mcp add council npx agents-council-mcp@latest mcp
+codex mcp add council npx agents-council@latest mcp
 ```
 
 or with a custom Agent Name
 
 ```bash
-codex mcp add council -- npx agents-council-mcp@latest mcp -n "Codex-5.2"
+codex mcp add council -- npx agents-council@latest mcp -n "Codex-5.2"
 ```
 
 </details>
@@ -91,7 +91,7 @@ Configure the following fields and press `CTRL+S` to save the configuration:
 
 - **Server name:** `council`
 - **Server Type:** `[1] Local`
-- **Command:** `npx agents-council-mcp@latest mcp`
+- **Command:** `npx agents-council@latest mcp`
 
 </details>
 
@@ -100,13 +100,13 @@ Configure the following fields and press `CTRL+S` to save the configuration:
     Use the Gemini CLI to add the Agents Council MCP server (<a href="https://geminicli.com/docs/tools/mcp-server/#adding-a-server-gemini-mcp-add">guide</a>):
 
 ```bash
-gemini mcp add council npx agents-council-mcp@latest mcp
+gemini mcp add council npx agents-council@latest mcp
 ```
 
 or use a predefined Agent Name and enable it for all projects with user scope
 
 ```bash
-gemini mcp add council -s user -- npx agents-council-mcp@latest mcp -n "Gemini 3 Pro"
+gemini mcp add council -s user -- npx agents-council@latest mcp -n "Gemini 3 Pro"
 ```
 
 </details>
@@ -120,7 +120,7 @@ gemini mcp add council -s user -- npx agents-council-mcp@latest mcp -n "Gemini 3
     "council": {
       "command": "npx",
       "args": [
-        "agents-council-mcp@latest",
+        "agents-council@latest",
         "mcp"
       ]
     }
@@ -136,7 +136,7 @@ or use a predefined Agent Name
     "council": {
       "command": "npx",
       "args": [
-        "agents-council-mcp@latest",
+        "agents-council@latest",
         "mcp",
         "-n",
         "YourAgentName"

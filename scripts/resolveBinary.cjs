@@ -21,7 +21,7 @@ function mapArch(arch = process.arch) {
 }
 
 function getPackageName(platform = process.platform, arch = process.arch) {
-  return `agents-council-mcp-${mapPlatform(platform)}-${mapArch(arch)}`;
+  return `agents-council-${mapPlatform(platform)}-${mapArch(arch)}`;
 }
 
 function resolveBinaryPath(platform = process.platform, arch = process.arch) {

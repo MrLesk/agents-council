@@ -15,7 +15,7 @@ const rawArgs = process.argv.slice(2);
 const cleanedArgs = rawArgs.filter((arg) => {
   if (arg === binaryPath) return false;
   try {
-    const pattern = /node_modules[/\\]agents-council-mcp-(darwin|linux|windows)-[^/\\]+[/\\]council(\.exe)?$/i;
+    const pattern = /node_modules[/\\]agents-council-(darwin|linux|windows)-[^/\\]+[/\\]council(\.exe)?$/i;
     return !pattern.test(arg);
   } catch {
     return true;

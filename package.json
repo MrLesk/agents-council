@@ -1,5 +1,5 @@
 {
-  "name": "agents-council-mcp",
+  "name": "agents-council",
   "version": "0.0.0",
   "type": "module",
   "files": [
@@ -11,11 +11,11 @@
     "council": "scripts/cli.cjs"
   },
   "optionalDependencies": {
-    "agents-council-mcp-darwin-arm64": "*",
-    "agents-council-mcp-darwin-x64": "*",
-    "agents-council-mcp-linux-arm64": "*",
-    "agents-council-mcp-linux-x64": "*",
-    "agents-council-mcp-windows-x64": "*"
+    "agents-council-darwin-arm64": "*",
+    "agents-council-darwin-x64": "*",
+    "agents-council-linux-arm64": "*",
+    "agents-council-linux-x64": "*",
+    "agents-council-windows-x64": "*"
   },
   "scripts": {
     "build": "bun build src/cli/index.ts --compile --outfile dist/council",

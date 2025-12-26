@@ -58,9 +58,9 @@ Updating workflow action versions to latest releases per request.
 
 Updated workflow action versions to the latest releases (setup-bun v2.0.2, checkout v6.0.1, cache v5.0.1, setup-node v6.1.0, download-artifact v7.0.0, upload-artifact v6.0.0, action-gh-release v2.5.0).
 
-Updating npm package name to agents-council-mcp (CLI remains council) and adjusting workflows/docs/scripts accordingly.
+Updating npm package name to agents-council (CLI remains council) and adjusting workflows/docs/scripts accordingly.
 
-Renamed npm package to agents-council-mcp (CLI still council), updated scripts/workflows/docs/plan and refreshed bun.lock via bun install. Optional dependency 404s expected until platform packages publish.
+Renamed npm package to agents-council (CLI still council), updated scripts/workflows/docs/plan and refreshed bun.lock via bun install. Optional dependency 404s expected until platform packages publish.
 
 Updating workflows to Node 24 and npm 11.7.0 per request.
 

@@ -102,11 +102,11 @@ jobs:
               .scripts = {"postuninstall": "node postuninstall.cjs"} |
               .repository = {"type":"git","url":"https://github.com/MrLesk/agents-council"} |
               .optionalDependencies = {
-                "agents-council-mcp-linux-x64": "'$TAG'",
-                "agents-council-mcp-linux-arm64": "'$TAG'",
-                "agents-council-mcp-darwin-x64": "'$TAG'",
-                "agents-council-mcp-darwin-arm64": "'$TAG'",
-                "agents-council-mcp-windows-x64": "'$TAG'"
+                "agents-council-linux-x64": "'$TAG'",
+                "agents-council-linux-arm64": "'$TAG'",
+                "agents-council-darwin-x64": "'$TAG'",
+                "agents-council-darwin-arm64": "'$TAG'",
+                "agents-council-windows-x64": "'$TAG'"
               }' package.json > dist/package.json
           cp LICENSE README.md dist/ 2>/dev/null || true
       - uses: actions/setup-node@v6
@@ -133,23 +133,23 @@ jobs:
       matrix:
         include:
           - target: bun-linux-x64-baseline
-            package: agents-council-mcp-linux-x64
+            package: agents-council-linux-x64
             os: linux
             cpu: x64
           - target: bun-linux-arm64
-            package: agents-council-mcp-linux-arm64
+            package: agents-council-linux-arm64
             os: linux
             cpu: arm64
           - target: bun-darwin-x64
-            package: agents-council-mcp-darwin-x64
+            package: agents-council-darwin-x64
             os: darwin
             cpu: x64
           - target: bun-darwin-arm64
-            package: agents-council-mcp-darwin-arm64
+            package: agents-council-darwin-arm64
             os: darwin
             cpu: arm64
           - target: bun-windows-x64-baseline
-            package: agents-council-mcp-windows-x64
+            package: agents-council-windows-x64
             os: win32
             cpu: x64
     runs-on: ubuntu-latest
@@ -230,7 +230,7 @@ jobs:
           VERSION="${GITHUB_REF##refs/tags/v}"
           mkdir sanity && cd sanity
           npm init -y >/dev/null 2>&1
-          npm i "agents-council-mcp@${VERSION}"
+          npm i "agents-council@${VERSION}"
           ./node_modules/.bin/council --version
           ./node_modules/.bin/council --help
       - name: Install and run council (Windows)
@@ -242,7 +242,7 @@ jobs:
           mkdir sanity | Out-Null
           Set-Location sanity
           npm init -y | Out-Null
-          npm i "agents-council-mcp@$Version"
+          npm i "agents-council@$Version"
           & .\node_modules\.bin\council.cmd --version
           & .\node_modules\.bin\council.cmd --help
 
