@@ -230,7 +230,13 @@ jobs:
           VERSION="${GITHUB_REF##refs/tags/v}"
           mkdir sanity && cd sanity
           npm init -y >/dev/null 2>&1
-          npm i "agents-council@${VERSION}"
+          for attempt in 1 2 3; do
+            if npm i "agents-council@${VERSION}"; then
+              break
+            fi
+            echo "Attempt $attempt failed, retrying in 10s..."
+            sleep 10
+          done
           ./node_modules/.bin/council --version
           ./node_modules/.bin/council --help
       - name: Install and run council (Windows)
@@ -242,7 +248,18 @@ jobs:
           mkdir sanity | Out-Null
           Set-Location sanity
           npm init -y | Out-Null
-          npm i "agents-council@$Version"
+          $installed = $false
+          for ($attempt = 1; $attempt -le 3; $attempt++) {
+            try {
+              npm i "agents-council@$Version"
+              $installed = $true
+              break
+            } catch {
+              Write-Host "Attempt $attempt failed, retrying in 10s..."
+              Start-Sleep -Seconds 10
+            }
+          }
+          if (-not $installed) { throw "Failed to install after 3 attempts" }
           & .\node_modules\.bin\council.cmd --version
           & .\node_modules\.bin\council.cmd --help
 
@@ -250,7 +267,7 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v7.0.0
+      - uses: actions/download-artifact@v7
         with:
           path: release-assets
         timeout-minutes: 15
@@ -281,6 +298,25 @@ jobs:
           done
           echo "=== Final binaries ==="
           ls -lh binaries/
-      - uses: softprops/action-gh-release@v2.5.0
+      - uses: softprops/action-gh-release@v2
         with:
           files: binaries/*
+
+  update-version:
+    needs: github-release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: main
+      - name: Sync version to tag
+        shell: bash
+        run: |
+          TAG="${GITHUB_REF##refs/tags/v}"
+          jq ".version = \"$TAG\"" package.json > tmp.json && mv tmp.json package.json
+      - name: Commit changes
+        uses: stefanzweifel/git-auto-commit-action@v7
+        with:
+          commit_message: "chore: update version to ${GITHUB_REF##refs/tags/v} [skip ci]"
+          branch: main
+          file_pattern: package.json
