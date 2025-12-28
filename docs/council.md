@@ -232,11 +232,21 @@ State is stored at:
 ~/.agents-council/state.json
 ```
 
+Summon settings are stored alongside state at:
+
+```
+~/.agents-council/config.json
+```
+
+The config persists the last used agent plus model and reasoning effort selections.
+
 Override with:
 
 ```
 AGENTS_COUNCIL_STATE_PATH=/path/to/state.json
 ```
+
+The config path uses the same directory as the resolved state path.
 
 ## SDK Requirement
 

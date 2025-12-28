@@ -1,10 +1,10 @@
 ---
 id: task-14.1
 title: Core config store for agent summon settings
-status: To Do
+status: Done
 assignee: []
 created_date: '2025-12-26 16:36'
-updated_date: '2025-12-26 18:12'
+updated_date: '2025-12-26 18:25'
 labels: []
 milestone: v0.3 - Summon Claude
 dependencies: []
@@ -19,11 +19,11 @@ Add a persistent config file stored alongside the council state file to hold sum
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Config file location is derived from the resolved council state path directory and persists across runs.
-- [ ] #2 Config stores last used agent and per-agent settings (model, reasoning effort) with sensible defaults when missing.
-- [ ] #3 Missing or invalid config data does not crash the app; defaults are returned and can be overwritten.
+- [x] #1 Config file location is derived from the resolved council state path directory and persists across runs.
+- [x] #2 Config stores last used agent and per-agent settings (model, reasoning effort) with sensible defaults when missing.
+- [x] #3 Missing or invalid config data does not crash the app; defaults are returned and can be overwritten.
 
-- [ ] #4 docs/council.md notes the summon settings file location (next to state) and that agent/model/reasoning effort choices are persisted.
+- [x] #4 docs/council.md notes the summon settings file location (next to state) and that agent/model/reasoning effort choices are persisted.
 <!-- AC:END -->
 
 ## Implementation Notes

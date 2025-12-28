@@ -34,3 +34,20 @@ You MUST read the overview resource to understand the complete workflow. The inf
 * [Development instructions](docs/council.md) 
 * [Up to date Bun documentation](docs/bun.md)
 * [Up to date MCP documentation](docs/mcp.md)
+
+## Simplicity-first implementation rules
+
+- Prefer a single implementation for similar concerns. Reuse or refactor to a shared helper instead of duplicating.
+- Keep APIs minimal. Favor load + upsert over load/save/update, and do not add unused methods.
+- Avoid extra layers (services, normalizers, versioning) unless there is an immediate, proven need.
+- Keep behavior consistent across similar stores (defaults, parse errors, locking). Divergence requires a clear reason.
+- Don't add new exported helpers just to compute a path; derive from existing paths or add one shared helper only when reused.
+
+## Required checks after changes
+
+Run these after each change:
+
+```bash
+bun run typecheck
+bun run lint
+```
