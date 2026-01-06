@@ -332,7 +332,13 @@ export function Hall({ name, council, onNameChange }: HallProps) {
                   <span className="stamp">{formatTime(currentRequest.created_at)}</span>
                 </header>
                 <div className="message-card-content">
-                  <p className="request-text">{currentRequest.content}</p>
+                  <MarkdownPreview
+                    className="message-content"
+                    source={currentRequest.content}
+                    skipHtml
+                    pluginsFilter={filterMarkdownPlugins}
+                    wrapperElement={{ "data-color-mode": "dark" }}
+                  />
                 </div>
               </article>
             ) : (

@@ -512,19 +512,6 @@ body::before {
   padding: 24px 16px;
 }
 
-/* Inner scroll card for request text */
-.request-scroll-card {
-  padding: 20px 24px;
-  margin: 0 8px;
-}
-
-.request-scroll-card .request-text {
-  margin: 0;
-  font-size: 17px;
-  line-height: 1.55;
-  font-family: var(--font-body);
-}
-
 /* Requester row with badge and timestamp */
 .matter-requester {
   display: flex;
@@ -635,12 +622,6 @@ body::before {
   font-size: 12px;
   color: var(--parchment-muted);
   margin-top: 12px;
-}
-
-.request-text {
-  font-size: 18px;
-  line-height: 1.4;
-  margin: 0 0 12px;
 }
 
 .request-card {
@@ -1089,7 +1070,7 @@ body::before {
 }
 
 .message-card-content {
-  padding: 16px;
+  padding: 16px 20px;
 }
 
 .message-card-content .message-content {

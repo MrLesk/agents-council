@@ -249,7 +249,12 @@ function buildSessionData(
     lastFeedbackSeen: nextCursor,
   }));
 
-  const allPending = computePendingParticipants(participants, state.feedback, request?.id ?? null);
+  const allPending = computePendingParticipants(
+    participants,
+    state.feedback,
+    request?.id ?? null,
+    request?.createdBy ?? null,
+  );
   // Exclude the polling agent from pending list - they shouldn't see themselves as "thinking"
   const pendingParticipants = allPending.filter((name) => name !== agentName);
 
@@ -270,12 +275,17 @@ function computePendingParticipants(
   participants: CouncilParticipant[],
   allFeedback: CouncilFeedback[],
   currentRequestId: string | null,
+  requestCreator: string | null,
 ): string[] {
   if (!currentRequestId) {
     return [];
   }
   const feedbackForRequest = allFeedback.filter((f) => f.requestId === currentRequestId);
   const authorsWithFeedback = new Set(feedbackForRequest.map((f) => f.author));
+  // Exclude request creator - they contributed via the request itself
+  if (requestCreator) {
+    authorsWithFeedback.add(requestCreator);
+  }
   return participants.filter((p) => !authorsWithFeedback.has(p.agentName)).map((p) => p.agentName);
 }
 
