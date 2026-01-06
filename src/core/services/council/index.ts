@@ -249,7 +249,9 @@ function buildSessionData(
     lastFeedbackSeen: nextCursor,
   }));
 
-  const pendingParticipants = computePendingParticipants(participants, state.feedback, request?.id ?? null);
+  const allPending = computePendingParticipants(participants, state.feedback, request?.id ?? null);
+  // Exclude the polling agent from pending list - they shouldn't see themselves as "thinking"
+  const pendingParticipants = allPending.filter((name) => name !== agentName);
 
   return {
     nextState: {

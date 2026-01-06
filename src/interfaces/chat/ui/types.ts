@@ -57,6 +57,7 @@ export type GetCurrentSessionDataResponse = {
   feedback: FeedbackDto[];
   participant: ParticipantDto;
   next_cursor: string | null;
+  pending_participants: string[];
   state: CouncilStateDto;
 };
 

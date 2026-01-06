@@ -27,6 +27,7 @@ export type CouncilContext = {
   hallState: HallState;
   currentRequest: RequestDto | null;
   feedback: FeedbackDto[];
+  pendingParticipants: string[];
   canClose: (name: string) => boolean;
   refresh: () => Promise<void>;
   start: (name: string, request: string) => Promise<boolean>;
@@ -45,6 +46,7 @@ export function useCouncil(name: string | null): CouncilContext {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [wsAttempt, setWsAttempt] = useState(0);
+  const [pendingParticipants, setPendingParticipants] = useState<string[]>([]);
 
   const sessionStatus: SessionStatus = state?.session?.status ?? "none";
 
@@ -84,6 +86,7 @@ export function useCouncil(name: string | null): CouncilContext {
     try {
       const result = await getCurrentSessionData(name);
       setState(result.state);
+      setPendingParticipants(result.pending_participants);
       setLastUpdated(new Date().toLocaleTimeString());
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to refresh session.");
@@ -183,6 +186,7 @@ export function useCouncil(name: string | null): CouncilContext {
     try {
       const result = await joinCouncil(userName);
       setState(result.state);
+      setPendingParticipants(result.pending_participants);
       setLastUpdated(new Date().toLocaleTimeString());
       if (!result.session_id || !result.request) {
         setNotice("No active council found.");
@@ -247,6 +251,7 @@ export function useCouncil(name: string | null): CouncilContext {
     hallState,
     currentRequest,
     feedback,
+    pendingParticipants,
     canClose,
     refresh,
     start,

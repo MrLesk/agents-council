@@ -69,7 +69,7 @@ export function Hall({ name, council, onNameChange }: HallProps) {
   const [summonBusy, setSummonBusy] = useState(false);
   const [summonError, setSummonError] = useState<string | null>(null);
   const [summonNotice, setSummonNotice] = useState<string | null>(null);
-  const [pendingSummon, setPendingSummon] = useState<{ agent: string; startedAt: number; error?: string } | null>(null);
+  const [summonFailure, setSummonFailure] = useState<{ agent: string; message: string } | null>(null);
   const [hasNewMessages, setHasNewMessages] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -84,6 +84,7 @@ export function Hall({ name, council, onNameChange }: HallProps) {
     hallState,
     currentRequest,
     feedback,
+    pendingParticipants,
     canClose,
     start,
     send,
@@ -182,36 +183,7 @@ export function Hall({ name, council, onNameChange }: HallProps) {
     };
   }, [showSummonAgent, applySummonDefaults]);
 
-  // Clear pending summon when the agent responds
-  useEffect(() => {
-    if (!pendingSummon) return;
-
-    const agentResponded = feedback.some(
-      (entry) =>
-        entry.author.toLowerCase() === pendingSummon.agent.toLowerCase() &&
-        new Date(entry.created_at).getTime() > pendingSummon.startedAt
-    );
-
-    if (agentResponded) {
-      setPendingSummon(null);
-      // Don't auto-scroll - toast will notify user of new messages
-    }
-  }, [feedback, pendingSummon]);
-
-  // Timeout for pending summon (90 seconds) - only for thinking state, not errors
-  useEffect(() => {
-    if (!pendingSummon || pendingSummon.error) return;
-
-    const timeout = setTimeout(() => {
-      setPendingSummon((prev) =>
-        prev && !prev.error ? { ...prev, error: "Summon timed out. Claude may still respond." } : prev
-      );
-    }, 90000);
-
-    return () => clearTimeout(timeout);
-  }, [pendingSummon]);
-
-  // Detect new messages from WebSocket updates (not from our own summon)
+  // Detect new messages from WebSocket updates
   useEffect(() => {
     const prevLength = prevFeedbackLengthRef.current;
     const currentLength = feedback.length;
@@ -219,42 +191,17 @@ export function Hall({ name, council, onNameChange }: HallProps) {
     // Update the ref for next comparison
     prevFeedbackLengthRef.current = currentLength;
 
-    // Debug: Log state when feedback changes
-    console.log("[Toast Debug] Effect triggered", {
-      prevLength,
-      currentLength,
-      pendingSummon: !!pendingSummon,
-    });
-
-    // If we have a pending summon, let that effect handle scrolling
-    if (pendingSummon) {
-      console.log("[Toast Debug] Skipping - pendingSummon is true");
-      return;
-    }
-
     // If new messages arrived and user is not near bottom, show toast
     // Use requestAnimationFrame to check after React renders the new content
     if (currentLength > prevLength && prevLength > 0) {
-      console.log("[Toast Debug] New message detected, checking scroll position...");
       requestAnimationFrame(() => {
-        const scrollTop = window.scrollY;
-        const scrollHeight = document.documentElement.scrollHeight;
-        const clientHeight = window.innerHeight;
         const nearBottom = isNearBottom();
-        console.log("[Toast Debug] Scroll check", {
-          scrollTop,
-          scrollHeight,
-          clientHeight,
-          distanceFromBottom: scrollHeight - scrollTop - clientHeight,
-          nearBottom,
-        });
         if (!nearBottom) {
-          console.log("[Toast Debug] Setting hasNewMessages = true");
           setHasNewMessages(true);
         }
       });
     }
-  }, [feedback.length, pendingSummon, isNearBottom]);
+  }, [feedback.length, isNearBottom]);
 
   // Clear new messages toast when user scrolls to bottom
   useEffect(() => {
@@ -300,6 +247,7 @@ export function Hall({ name, council, onNameChange }: HallProps) {
     setSummonBusy(true);
     setSummonError(null);
     setSummonNotice(null);
+    setSummonFailure(null);
 
     try {
       // Save settings first
@@ -309,16 +257,15 @@ export function Hall({ name, council, onNameChange }: HallProps) {
       // Show loading animation for 200ms before closing modal
       await new Promise((resolve) => setTimeout(resolve, 200));
 
-      // Close modal and show thinking state
+      // Close modal - loading indicator will appear via pendingParticipants from API
       setShowSummonAgent(false);
-      setPendingSummon({ agent: summonAgentName, startedAt: Date.now() });
 
       // Run summon in background
       await summonAgent(payload);
     } catch (err) {
-      // Show error inline where the thinking indicator was
+      // Show error inline in the messages area
       const message = err instanceof Error ? err.message : "Unable to summon agent.";
-      setPendingSummon((prev) => (prev ? { ...prev, error: message } : null));
+      setSummonFailure({ agent: summonAgentName, message });
     } finally {
       setSummonBusy(false);
     }
@@ -442,7 +389,7 @@ export function Hall({ name, council, onNameChange }: HallProps) {
             <div className="empty">No council is in session.</div>
           ) : (
             <div className="messages" ref={messagesContainerRef}>
-              {feedback.length === 0 && !pendingSummon ? (
+              {feedback.length === 0 && pendingParticipants.length === 0 && !summonFailure ? (
                 <div className="empty">The council listens...</div>
               ) : (
                 <>
@@ -466,39 +413,39 @@ export function Hall({ name, council, onNameChange }: HallProps) {
                       </article>
                     );
                   })}
-                  {pendingSummon ? (
-                    pendingSummon.error ? (
-                      <article className={`message-card panel-secondary agent-${getAgentType(pendingSummon.agent)} error-card`}>
-                        <header className="message-card-header">
-                          <AgentBadge name={pendingSummon.agent} />
-                          <span className="stamp error-label">failed</span>
-                        </header>
-                        <div className="message-card-content">
-                          <p className="error-text">{pendingSummon.error}</p>
-                          <button
-                            type="button"
-                            className="btn-link"
-                            onClick={() => setPendingSummon(null)}
-                          >
-                            Dismiss
-                          </button>
+                  {pendingParticipants.map((agentName) => (
+                    <article
+                      key={`pending-${agentName}`}
+                      className={`message-card panel-secondary agent-${getAgentType(agentName)} thinking`}
+                    >
+                      <header className="message-card-header">
+                        <AgentBadge name={agentName} />
+                        <span className="stamp thinking-label">thinking...</span>
+                      </header>
+                      <div className="message-card-content">
+                        <div className="thinking-indicator">
+                          <span className="thinking-dot" />
+                          <span className="thinking-dot" />
+                          <span className="thinking-dot" />
                         </div>
-                      </article>
-                    ) : (
-                      <article className={`message-card panel-secondary agent-${getAgentType(pendingSummon.agent)} thinking`}>
-                        <header className="message-card-header">
-                          <AgentBadge name={pendingSummon.agent} />
-                          <span className="stamp thinking-label">summoning...</span>
-                        </header>
-                        <div className="message-card-content">
-                          <div className="thinking-indicator">
-                            <span className="thinking-dot" />
-                            <span className="thinking-dot" />
-                            <span className="thinking-dot" />
-                          </div>
-                        </div>
-                      </article>
-                    )
+                      </div>
+                    </article>
+                  ))}
+                  {summonFailure ? (
+                    <article
+                      className={`message-card panel-secondary agent-${getAgentType(summonFailure.agent)} error-card`}
+                    >
+                      <header className="message-card-header">
+                        <AgentBadge name={summonFailure.agent} />
+                        <span className="stamp error-label">failed</span>
+                      </header>
+                      <div className="message-card-content">
+                        <p className="error-text">{summonFailure.message}</p>
+                        <button type="button" className="btn-link" onClick={() => setSummonFailure(null)}>
+                          Dismiss
+                        </button>
+                      </div>
+                    </article>
                   ) : null}
                 </>
               )}
@@ -724,8 +671,7 @@ export function Hall({ name, council, onNameChange }: HallProps) {
                     onChange={(event) => setSummonModel(event.target.value)}
                     disabled={summonBusy}
                   >
-                    {summonModel &&
-                    !summonSettings.supported_models.some((model) => model.value === summonModel) ? (
+                    {summonModel && !summonSettings.supported_models.some((model) => model.value === summonModel) ? (
                       <option value={summonModel}>{`Saved: ${summonModel}`}</option>
                     ) : null}
                     {summonSettings.supported_models.map((model) => (
@@ -751,11 +697,7 @@ export function Hall({ name, council, onNameChange }: HallProps) {
 
       {/* Toast - rendered at root level for proper fixed positioning */}
       {hasNewMessages ? (
-        <button
-          type="button"
-          className="new-messages-toast"
-          onClick={scrollToBottom}
-        >
+        <button type="button" className="new-messages-toast" onClick={scrollToBottom}>
           ↓ New messages
         </button>
       ) : null}

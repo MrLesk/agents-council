@@ -155,7 +155,7 @@ body::before {
 }
 
 /* ==========================================================================
-   Status Orb - Glowing indicator with pulse animation
+   Status Orb - Glowing indicator
    Used for: Session status, connection status
    ========================================================================== */
 
@@ -164,12 +164,12 @@ body::before {
   height: 12px;
   border-radius: 50%;
   flex-shrink: 0;
+  transition: background-color 200ms ease, box-shadow 200ms ease;
 }
 
 .status-orb-active {
   background: var(--emerald);
   box-shadow: 0 0 10px var(--emerald-glow);
-  animation: pulse-glow-emerald 2s ease-in-out infinite;
 }
 
 .status-orb-closed {
@@ -185,7 +185,6 @@ body::before {
 .status-orb-listening {
   background: var(--gold);
   box-shadow: 0 0 10px var(--gold-glow);
-  animation: pulse-glow-gold 2s ease-in-out infinite;
 }
 
 .status-orb-offline {
@@ -193,29 +192,6 @@ body::before {
   box-shadow: 0 0 8px var(--crimson-glow);
 }
 
-@keyframes pulse-glow-emerald {
-  0%,
-  100% {
-    box-shadow: 0 0 10px var(--emerald-glow);
-  }
-  50% {
-    box-shadow:
-      0 0 20px var(--emerald-glow),
-      0 0 30px var(--emerald-glow);
-  }
-}
-
-@keyframes pulse-glow-gold {
-  0%,
-  100% {
-    box-shadow: 0 0 10px var(--gold-glow);
-  }
-  50% {
-    box-shadow:
-      0 0 20px var(--gold-glow),
-      0 0 30px var(--gold-glow);
-  }
-}
 
 /* Status indicator group: orb + label */
 .status-indicator {
@@ -1257,7 +1233,7 @@ body::before {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 12px;
+  gap: 64px;
   position: relative;
   z-index: 1;
   transform: translateY(-16px);
