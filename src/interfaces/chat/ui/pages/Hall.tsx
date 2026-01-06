@@ -135,10 +135,11 @@ export function Hall({ name, council, onNameChange }: HallProps) {
   }, []);
 
   const isNearBottom = useCallback(() => {
-    const container = messagesContainerRef.current;
-    if (!container) return true;
     const threshold = 150; // pixels from bottom
-    return container.scrollHeight - container.scrollTop - container.clientHeight < threshold;
+    const scrollTop = window.scrollY || document.documentElement.scrollTop;
+    const scrollHeight = document.documentElement.scrollHeight;
+    const clientHeight = window.innerHeight;
+    return scrollHeight - scrollTop - clientHeight < threshold;
   }, []);
 
   const scrollToBottom = useCallback(() => {
@@ -218,28 +219,58 @@ export function Hall({ name, council, onNameChange }: HallProps) {
     // Update the ref for next comparison
     prevFeedbackLengthRef.current = currentLength;
 
+    // Debug: Log state when feedback changes
+    console.log("[Toast Debug] Effect triggered", {
+      prevLength,
+      currentLength,
+      pendingSummon: !!pendingSummon,
+    });
+
     // If we have a pending summon, let that effect handle scrolling
-    if (pendingSummon) return;
+    if (pendingSummon) {
+      console.log("[Toast Debug] Skipping - pendingSummon is true");
+      return;
+    }
 
     // If new messages arrived and user is not near bottom, show toast
-    if (currentLength > prevLength && prevLength > 0 && !isNearBottom()) {
-      setHasNewMessages(true);
+    // Use requestAnimationFrame to check after React renders the new content
+    if (currentLength > prevLength && prevLength > 0) {
+      console.log("[Toast Debug] New message detected, checking scroll position...");
+      requestAnimationFrame(() => {
+        const scrollTop = window.scrollY;
+        const scrollHeight = document.documentElement.scrollHeight;
+        const clientHeight = window.innerHeight;
+        const nearBottom = isNearBottom();
+        console.log("[Toast Debug] Scroll check", {
+          scrollTop,
+          scrollHeight,
+          clientHeight,
+          distanceFromBottom: scrollHeight - scrollTop - clientHeight,
+          nearBottom,
+        });
+        if (!nearBottom) {
+          console.log("[Toast Debug] Setting hasNewMessages = true");
+          setHasNewMessages(true);
+        }
+      });
     }
   }, [feedback.length, pendingSummon, isNearBottom]);
 
   // Clear new messages toast when user scrolls to bottom
   useEffect(() => {
-    const container = messagesContainerRef.current;
-    if (!container || !hasNewMessages) return;
+    if (!hasNewMessages) return;
 
     const handleScroll = () => {
-      if (isNearBottom()) {
+      const nearBottom = isNearBottom();
+      console.log("[Toast Debug] Scroll event - nearBottom:", nearBottom);
+      if (nearBottom) {
+        console.log("[Toast Debug] Clearing hasNewMessages due to scroll");
         setHasNewMessages(false);
       }
     };
 
-    container.addEventListener("scroll", handleScroll, { passive: true });
-    return () => container.removeEventListener("scroll", handleScroll);
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
   }, [hasNewMessages, isNearBottom]);
 
   const handleSummonAgentChange = (event: ChangeEvent<HTMLSelectElement>) => {
@@ -474,15 +505,6 @@ export function Hall({ name, council, onNameChange }: HallProps) {
               <div ref={messagesEndRef} />
             </div>
           )}
-          {hasNewMessages ? (
-            <button
-              type="button"
-              className="new-messages-toast"
-              onClick={scrollToBottom}
-            >
-              ↓ New messages
-            </button>
-          ) : null}
         </section>
 
         {isActive ? (
@@ -725,6 +747,17 @@ export function Hall({ name, council, onNameChange }: HallProps) {
             )}
           </div>
         </div>
+      ) : null}
+
+      {/* Toast - rendered at root level for proper fixed positioning */}
+      {hasNewMessages ? (
+        <button
+          type="button"
+          className="new-messages-toast"
+          onClick={scrollToBottom}
+        >
+          ↓ New messages
+        </button>
       ) : null}
     </div>
   );

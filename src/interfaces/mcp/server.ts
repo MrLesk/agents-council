@@ -98,7 +98,10 @@ export async function startMcpServer(options: { format?: ResponseFormat; agentNa
   console.error("Council MCP server running on stdio");
 }
 
-function registerTools(options: { hasDefaultAgentName: boolean; supportedModels: { value: string }[] }): void {
+function registerTools(options: {
+  hasDefaultAgentName: boolean;
+  supportedModels: { value: string; displayName: string; description: string }[];
+}): void {
   if (toolsRegistered) {
     return;
   }
@@ -209,8 +212,13 @@ function registerTools(options: { hasDefaultAgentName: boolean; supportedModels:
     ? "Join the current council session and fetch the request and responses."
     : "Join the current council session and fetch the request and responses. Provide agent_name to identify yourself; the server may append #1, #2, etc. if the name is already taken.";
 
-  const summonAgentDescription =
-    "Summon an agent into the active council. agent is required; model is an optional override. Defaults use the last used agent or alphabetical fallback.";
+  const modelDescriptions =
+    options.supportedModels.length > 0
+      ? options.supportedModels.map((m) => `${m.value}: ${m.description || m.displayName}`).join(", ")
+      : "";
+  const summonAgentDescription = modelDescriptions
+    ? `Summon an agent into the active council. agent is required; model is an optional override. Defaults use the last used agent or alphabetical fallback. Available models: ${modelDescriptions}.`
+    : "Summon an agent into the active council. agent is required; model is an optional override. Defaults use the last used agent or alphabetical fallback.";
 
   registerTool<JoinCouncilParams>(
     "join_council",
@@ -425,6 +433,11 @@ function formatGetCurrentSessionData(response: GetCurrentSessionDataResponse, co
     lines.push(`Response: ${entry.content}`);
     lines.push("---");
   });
+
+  if (response.pending_participants.length > 0) {
+    lines.push(`Awaiting response from: ${response.pending_participants.join(", ")}`);
+    lines.push("");
+  }
 
   lines.push("No further replies are heard for now. Return anon for more.");
   lines.push(`To hear only new replies, use the cursor: ${cursorToken}`);

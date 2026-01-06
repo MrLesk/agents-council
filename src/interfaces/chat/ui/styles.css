@@ -1797,27 +1797,52 @@ body::before {
    ========================================================================== */
 
 .new-messages-toast {
-  position: absolute;
-  bottom: 16px;
-  right: 24px;
-  background: var(--gold);
-  color: var(--obsidian);
-  border: none;
-  border-radius: 20px;
-  padding: 8px 16px;
+  position: fixed;
+  bottom: 32px;
+  right: 32px;
+  left: auto;
+  width: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: linear-gradient(135deg, rgba(40, 30, 25, 0.95), rgba(25, 18, 14, 0.98));
+  color: var(--gold);
+  border: 1px solid var(--gold);
+  border-radius: 12px;
+  padding: 14px 20px;
   font-family: var(--font-body);
-  font-size: 0.85rem;
+  font-size: 0.9rem;
   font-weight: 600;
   cursor: pointer;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
-  z-index: 10;
-  animation: toast-bounce 0.3s ease-out;
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.5),
+    0 0 20px rgba(210, 177, 119, 0.15),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  z-index: 1000;
+  animation: toast-slide-in 0.3s ease-out;
+  backdrop-filter: blur(8px);
 }
 
 .new-messages-toast:hover {
-  background: var(--gold-bright);
+  background: linear-gradient(135deg, rgba(50, 38, 30, 0.95), rgba(30, 22, 16, 0.98));
+  border-color: var(--gold-bright);
+  color: var(--gold-bright);
   transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.5);
+  box-shadow:
+    0 12px 40px rgba(0, 0, 0, 0.6),
+    0 0 30px rgba(210, 177, 119, 0.25),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+@keyframes toast-slide-in {
+  0% {
+    opacity: 0;
+    transform: translateX(100px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0);
+  }
 }
 
 @keyframes toast-bounce {

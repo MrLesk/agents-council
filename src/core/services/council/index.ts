@@ -80,7 +80,7 @@ export class CouncilServiceImpl implements CouncilService {
     const { agentName } = resolveAgentName(state.participants, input.agentName, {
       allowReuse: true,
     });
-    const { nextState, participant, request, feedback, nextCursor } = buildSessionData(
+    const { nextState, participant, request, feedback, nextCursor, pendingParticipants } = buildSessionData(
       state,
       agentName,
       input.cursor,
@@ -94,6 +94,7 @@ export class CouncilServiceImpl implements CouncilService {
       feedback,
       participant,
       nextCursor,
+      pendingParticipants,
       state: nextState,
     };
   }
@@ -233,6 +234,7 @@ function buildSessionData(
   request: CouncilRequest | null;
   feedback: CouncilFeedback[];
   nextCursor: string | null;
+  pendingParticipants: string[];
 } {
   const effectiveCursor = cursor ?? null;
   const request = getCurrentRequest(state);
@@ -247,6 +249,8 @@ function buildSessionData(
     lastFeedbackSeen: nextCursor,
   }));
 
+  const pendingParticipants = computePendingParticipants(participants, state.feedback, request?.id ?? null);
+
   return {
     nextState: {
       ...state,
@@ -256,7 +260,21 @@ function buildSessionData(
     request,
     feedback,
     nextCursor,
+    pendingParticipants,
   };
+}
+
+function computePendingParticipants(
+  participants: CouncilParticipant[],
+  allFeedback: CouncilFeedback[],
+  currentRequestId: string | null,
+): string[] {
+  if (!currentRequestId) {
+    return [];
+  }
+  const feedbackForRequest = allFeedback.filter((f) => f.requestId === currentRequestId);
+  const authorsWithFeedback = new Set(feedbackForRequest.map((f) => f.author));
+  return participants.filter((p) => !authorsWithFeedback.has(p.agentName)).map((p) => p.agentName);
 }
 
 function sliceAfterId<T extends { id: string }>(items: T[], lastSeenId: string | null): T[] {

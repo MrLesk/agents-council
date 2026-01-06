@@ -81,6 +81,7 @@ export function mapGetCurrentSessionDataResponse(result: GetCurrentSessionDataRe
     feedback: result.feedback.map(mapFeedback),
     participant: mapParticipant(result.participant),
     next_cursor: result.nextCursor,
+    pending_participants: result.pendingParticipants,
     state: mapCouncilState(result.state),
   };
 }
