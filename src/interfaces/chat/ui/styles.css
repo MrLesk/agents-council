@@ -1,23 +1,56 @@
-@import url("https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=IM+Fell+English:ital,wght@0,400;1,400&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=Crimson+Pro:ital,wght@0,400;0,500;0,600;1,400&family=IM+Fell+English:ital,wght@0,400;1,400&display=swap");
 
 :root {
   color-scheme: light;
+
+  /* Base colors */
   --night: #0e0b09;
   --stone: #1f1914;
   --ash: #2b231c;
   --ink: #120d0a;
   --parchment: #f1e7d3;
-  --parchment-muted: rgba(241, 231, 211, 0.82);
+  --parchment-muted: rgba(241, 231, 211, 0.65);
+
+  /* Gold - Primary accent, important elements */
   --gold: #d2b177;
+  --gold-bright: #f4d794;
+  --gold-glow: rgba(244, 215, 148, 0.5);
+  --gold-dark: #a68b4b;
   --gold-soft: rgba(210, 177, 119, 0.35);
+
+  /* Ember - Warnings, summon actions */
   --ember: #d88a47;
+  --ember-glow: rgba(216, 138, 71, 0.5);
+
+  /* Crimson - Errors, danger, closed state */
   --crimson: #8c3b2e;
+  --crimson-glow: rgba(140, 59, 46, 0.4);
+
+  /* Emerald - Success, active session */
   --emerald: #3f8d73;
+  --emerald-glow: rgba(63, 141, 115, 0.5);
+
+  /* Sage - Conclusions, completed states */
   --sage: #7fc6aa;
+  --sage-glow: rgba(127, 198, 170, 0.5);
   --sage-soft: rgba(127, 198, 170, 0.25);
+
+  /* Agent identity colors */
+  --agent-claude: #9d7cd8;
+  --agent-codex: #56b886;
+  --agent-gemini: #6b9eff;
+  --agent-human: #d2b177;
+  --agent-other: #a0a0a0;
+
+  /* Utility */
   --shadow: rgba(12, 8, 6, 0.55);
+
+  /* Typography */
   --font-display: "Cinzel", serif;
-  --font-body: "IM Fell English", serif;
+  --font-body: "Crimson Pro", serif;
+  --font-flavor: "IM Fell English", serif;
+
+  /* Layout */
   --radius: 18px;
 }
 
@@ -122,7 +155,74 @@ body::before {
   letter-spacing: 0.5px;
 }
 
-.status-pill {
+/* ==========================================================================
+   Status Orb - Glowing indicator with pulse animation
+   Used for: Session status, connection status
+   ========================================================================== */
+
+.status-orb {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.status-orb-active {
+  background: var(--emerald);
+  box-shadow: 0 0 10px var(--emerald-glow);
+  animation: pulse-glow-emerald 2s ease-in-out infinite;
+}
+
+.status-orb-closed {
+  background: var(--crimson);
+  box-shadow: 0 0 8px var(--crimson-glow);
+}
+
+.status-orb-none {
+  background: var(--parchment-muted);
+  box-shadow: 0 0 6px rgba(241, 231, 211, 0.2);
+}
+
+.status-orb-listening {
+  background: var(--gold);
+  box-shadow: 0 0 10px var(--gold-glow);
+  animation: pulse-glow-gold 2s ease-in-out infinite;
+}
+
+.status-orb-offline {
+  background: var(--crimson);
+  box-shadow: 0 0 8px var(--crimson-glow);
+}
+
+@keyframes pulse-glow-emerald {
+  0%,
+  100% {
+    box-shadow: 0 0 10px var(--emerald-glow);
+  }
+  50% {
+    box-shadow:
+      0 0 20px var(--emerald-glow),
+      0 0 30px var(--emerald-glow);
+  }
+}
+
+@keyframes pulse-glow-gold {
+  0%,
+  100% {
+    box-shadow: 0 0 10px var(--gold-glow);
+  }
+  50% {
+    box-shadow:
+      0 0 20px var(--gold-glow),
+      0 0 30px var(--gold-glow);
+  }
+}
+
+/* Status indicator group: orb + label */
+.status-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   padding: 6px 12px;
   border-radius: 999px;
   font-size: 12px;
@@ -130,30 +230,27 @@ body::before {
   letter-spacing: 1px;
   border: 1px solid var(--gold-soft);
   background: rgba(15, 10, 8, 0.6);
-}
-
-.status-active {
-  color: var(--gold);
-  border-color: rgba(210, 177, 119, 0.6);
-}
-
-.status-closed {
-  color: var(--crimson);
-  border-color: rgba(140, 59, 46, 0.6);
-}
-
-.status-none {
   color: var(--parchment-muted);
 }
 
-.status-listening {
+.status-indicator-active {
   color: var(--emerald);
-  border-color: rgba(63, 141, 115, 0.6);
+  border-color: rgba(63, 141, 115, 0.5);
 }
 
-.status-offline {
+.status-indicator-closed {
   color: var(--crimson);
-  border-color: rgba(140, 59, 46, 0.6);
+  border-color: rgba(140, 59, 46, 0.5);
+}
+
+.status-indicator-listening {
+  color: var(--gold);
+  border-color: rgba(210, 177, 119, 0.5);
+}
+
+.status-indicator-offline {
+  color: var(--crimson);
+  border-color: rgba(140, 59, 46, 0.5);
 }
 
 
@@ -197,6 +294,153 @@ body::before {
   pointer-events: none;
 }
 
+/* ==========================================================================
+   Primary Frame - Ornate panels with decorative corners
+   Used for: Main panels (Matter, Voices, Composer)
+   ========================================================================== */
+
+.panel-primary {
+  position: relative;
+  padding: 22px;
+  border-radius: var(--radius);
+  background: linear-gradient(
+    160deg,
+    rgba(43, 35, 28, 0.95),
+    rgba(18, 13, 10, 0.98)
+  );
+  border: 2px solid var(--gold);
+  box-shadow:
+    0 0 20px rgba(210, 177, 119, 0.15),
+    inset 0 0 40px rgba(210, 177, 119, 0.05),
+    0 8px 32px rgba(0, 0, 0, 0.5);
+  overflow: visible;
+  animation: panel-enter 0.4s ease-out;
+}
+
+/* Inner glow overlay */
+.panel-primary > .panel-primary-inner {
+  position: absolute;
+  inset: 0;
+  border-radius: calc(var(--radius) - 2px);
+  background: radial-gradient(
+    circle at top left,
+    rgba(210, 177, 119, 0.12),
+    transparent 55%
+  );
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Top-left corner accent */
+.panel-primary::before {
+  content: "";
+  position: absolute;
+  top: -4px;
+  left: -4px;
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--gold-bright);
+  border-right: none;
+  border-bottom: none;
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* Top-right corner accent */
+.panel-primary::after {
+  content: "";
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--gold-bright);
+  border-left: none;
+  border-bottom: none;
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* Bottom corners wrapper - add this element inside .panel-primary for all 4 corners */
+.panel-primary-corners {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* Bottom-left corner accent */
+.panel-primary-corners::before {
+  content: "";
+  position: absolute;
+  bottom: -4px;
+  left: -4px;
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--gold-bright);
+  border-right: none;
+  border-top: none;
+  pointer-events: none;
+}
+
+/* Bottom-right corner accent */
+.panel-primary-corners::after {
+  content: "";
+  position: absolute;
+  bottom: -4px;
+  right: -4px;
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--gold-bright);
+  border-left: none;
+  border-top: none;
+  pointer-events: none;
+}
+
+/* Ensure content is above the inner glow */
+.panel-primary > *:not(.panel-primary-inner):not(.panel-primary-corners) {
+  position: relative;
+  z-index: 1;
+}
+
+/* ==========================================================================
+   Secondary Frame - Cards and messages
+   Used for: Message cards, request cards, inner content blocks
+   ========================================================================== */
+
+.panel-secondary {
+  --agent-color: var(--gold);
+  position: relative;
+  background: rgba(20, 14, 11, 0.85);
+  border: 1px solid rgba(210, 177, 119, 0.4);
+  border-left: 3px solid var(--agent-color);
+  border-radius: 8px;
+  box-shadow:
+    0 4px 16px rgba(0, 0, 0, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+/* Agent color variants for secondary frames */
+.panel-secondary.agent-claude {
+  --agent-color: var(--agent-claude);
+}
+
+.panel-secondary.agent-codex {
+  --agent-color: var(--agent-codex);
+}
+
+.panel-secondary.agent-gemini {
+  --agent-color: var(--agent-gemini);
+}
+
+.panel-secondary.agent-human {
+  --agent-color: var(--agent-human);
+}
+
+.panel-secondary.agent-other {
+  --agent-color: var(--agent-other);
+}
+
 .panel-header {
   display: flex;
   align-items: center;
@@ -211,14 +455,6 @@ body::before {
   font-family: var(--font-display);
   letter-spacing: 1px;
   font-weight: 600;
-}
-
-.matter-header-actions {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
 }
 
 .voices-header-actions {
@@ -238,43 +474,148 @@ body::before {
 .matter-panel {
   display: flex;
   flex-direction: column;
+  gap: 20px;
+}
+
+/* ==========================================================================
+   Panel Title with Decorative Flourishes
+   Used for: Matter panel title, other important headers
+   ========================================================================== */
+
+.panel-title-decorated {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  text-align: center;
+  font-size: 16px;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+}
+
+.title-flourish {
+  color: var(--gold-bright);
+  font-size: 14px;
+  text-shadow: 0 0 10px var(--gold-glow);
+}
+
+.panel-header-centered {
+  justify-content: center;
+}
+
+.panel-title-hero {
+  font-size: 20px;
+  letter-spacing: 3px;
+}
+
+.panel-title-hero .title-flourish {
+  font-size: 18px;
+}
+
+/* ==========================================================================
+   Matter Panel Content - Single Column Quest Objective
+   ========================================================================== */
+
+.matter-content {
+  display: flex;
+  flex-direction: column;
   gap: 16px;
 }
 
-.matter-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1.6fr) minmax(0, 0.9fr);
-  gap: 24px;
-  align-items: start;
+.matter-empty {
+  text-align: center;
+  padding: 24px 16px;
 }
 
-.matter-grid-single {
-  grid-template-columns: minmax(0, 1fr);
+/* Inner scroll card for request text */
+.request-scroll-card {
+  padding: 20px 24px;
+  margin: 0 8px;
 }
 
-.matter-details {
+.request-scroll-card .request-text {
+  margin: 0;
+  font-size: 17px;
+  line-height: 1.55;
+  font-family: var(--font-body);
+}
+
+/* Requester row with badge and timestamp */
+.matter-requester {
   display: flex;
-  flex-direction: column;
-  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px;
 }
 
-.matter-actions {
+/* ==========================================================================
+   Matter Actions Footer - Prominent buttons at bottom
+   ========================================================================== */
+
+.matter-actions-footer {
   display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding-left: 24px;
-  border-left: 1px solid rgba(210, 177, 119, 0.2);
-}
-
-.seal-panel,
-.convene-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.matter-cta {
+  flex-wrap: wrap;
+  gap: 16px;
+  justify-content: center;
+  padding-top: 12px;
+  border-top: 1px solid rgba(210, 177, 119, 0.2);
   margin-top: 8px;
+}
+
+.matter-actions-footer .btn-game {
+  min-width: 180px;
+}
+
+/* Seal button variant - slightly different styling */
+.btn-game-seal {
+  background: linear-gradient(
+    180deg,
+    rgba(140, 59, 46, 0.85) 0%,
+    rgba(110, 45, 35, 0.85) 50%,
+    rgba(80, 30, 25, 0.85) 100%
+  );
+  border-color: #6b3228;
+  border-top-color: #a34a3a;
+  border-left-color: #a34a3a;
+}
+
+.btn-game-seal:hover {
+  background: linear-gradient(
+    180deg,
+    rgba(160, 70, 55, 0.9) 0%,
+    rgba(140, 59, 46, 0.9) 50%,
+    rgba(100, 40, 30, 0.9) 100%
+  );
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.3),
+    0 0 20px var(--crimson-glow),
+    0 4px 8px rgba(0, 0, 0, 0.4);
+}
+
+/* Seal conclusion input area */
+.matter-seal-input {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+  margin-top: 8px;
+  border-radius: 12px;
+  background: rgba(14, 10, 8, 0.5);
+  border: 1px solid rgba(140, 59, 46, 0.3);
+}
+
+.matter-seal-input .label {
+  font-size: 13px;
+  color: var(--crimson);
+}
+
+.matter-seal-input .textarea {
+  border-color: rgba(140, 59, 46, 0.4);
+}
+
+.matter-seal-input .textarea:focus {
+  border-color: rgba(140, 59, 46, 0.7);
+  box-shadow: 0 0 0 2px rgba(140, 59, 46, 0.25), inset 0 2px 6px rgba(6, 4, 3, 0.5);
 }
 
 .voices-panel {
@@ -458,9 +799,121 @@ body::before {
   background: linear-gradient(135deg, rgba(63, 141, 115, 0.28), rgba(19, 24, 20, 0.5));
 }
 
+/* ==========================================================================
+   Game-Style Beveled Buttons
+   Used for: Primary actions, important interactive elements
+   ========================================================================== */
+
+.btn-game {
+  position: relative;
+  padding: 12px 24px;
+  border-radius: 8px;
+  background: linear-gradient(
+    180deg,
+    rgba(210, 177, 119, 0.9) 0%,
+    rgba(180, 140, 80, 0.9) 50%,
+    rgba(140, 100, 50, 0.9) 100%
+  );
+  border: 2px solid var(--gold-dark);
+  border-top-color: var(--gold-bright);
+  border-left-color: var(--gold-bright);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.3),
+    0 4px 8px rgba(0, 0, 0, 0.4);
+  color: var(--ink);
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.2);
+  cursor: pointer;
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease,
+    background 0.2s ease;
+}
+
+.btn-game:hover {
+  background: linear-gradient(
+    180deg,
+    rgba(244, 215, 148, 0.95) 0%,
+    rgba(210, 177, 119, 0.95) 50%,
+    rgba(160, 120, 60, 0.95) 100%
+  );
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.4),
+    0 0 20px var(--gold-glow),
+    0 4px 8px rgba(0, 0, 0, 0.4);
+  transform: translateY(-2px);
+}
+
+.btn-game:active {
+  transform: translateY(2px);
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.btn-game:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+  background: linear-gradient(
+    180deg,
+    rgba(160, 150, 130, 0.6) 0%,
+    rgba(130, 120, 100, 0.6) 50%,
+    rgba(100, 90, 70, 0.6) 100%
+  );
+  border-color: rgba(160, 140, 100, 0.4);
+  color: rgba(18, 13, 10, 0.6);
+  text-shadow: none;
+}
+
+/* ==========================================================================
+   Ghost/Secondary Button
+   Used for: Secondary actions, cancel buttons, less prominent options
+   ========================================================================== */
+
 .btn-ghost {
-  border-color: rgba(241, 231, 211, 0.3);
-  background: rgba(10, 8, 7, 0.4);
+  position: relative;
+  padding: 12px 24px;
+  border-radius: 8px;
+  background: rgba(10, 8, 7, 0.6);
+  border: 1px solid rgba(210, 177, 119, 0.5);
+  color: var(--parchment);
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition:
+    transform 0.2s ease,
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    background 0.2s ease;
+}
+
+.btn-ghost:hover {
+  transform: translateY(-1px);
+  border-color: var(--gold);
+  box-shadow: 0 0 15px var(--gold-glow);
+  background: rgba(20, 15, 12, 0.7);
+}
+
+.btn-ghost:active {
+  transform: translateY(1px);
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.btn-ghost:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+  border-color: rgba(160, 150, 130, 0.3);
+  color: var(--parchment-muted);
+  background: rgba(10, 8, 7, 0.3);
 }
 
 .btn-danger {
@@ -544,6 +997,33 @@ body::before {
   border-color: rgba(210, 177, 119, 0.3);
 }
 
+/* ==========================================================================
+   Message Card - Individual voice messages with agent-colored border
+   Used for: Voices panel messages
+   ========================================================================== */
+
+.message-card {
+  overflow: hidden;
+  animation: message-enter 0.5s ease-out;
+}
+
+.message-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  border-bottom: 1px solid rgba(210, 177, 119, 0.15);
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.message-card-content {
+  padding: 16px;
+}
+
+.message-card-content .message-content {
+  margin: 0;
+}
+
 .message-content th,
 .message-content td {
   border-color: rgba(210, 177, 119, 0.25);
@@ -579,13 +1059,65 @@ body::before {
 }
 
 .voices-count {
-  padding: 4px 10px;
+  padding: 5px 12px;
   border-radius: 999px;
-  border: 1px solid rgba(210, 177, 119, 0.22);
-  background: rgba(16, 12, 9, 0.55);
-  font-size: 12px;
-  letter-spacing: 0.3px;
+  border: 1px solid rgba(210, 177, 119, 0.4);
+  background: rgba(16, 12, 9, 0.7);
+  font-size: 13px;
+  font-family: var(--font-display);
+  letter-spacing: 0.5px;
+  color: var(--gold);
+  text-shadow: 0 0 8px var(--gold-glow);
+}
+
+/* ==========================================================================
+   Composer Panel - Input panel with primary frame styling
+   ========================================================================== */
+
+.composer-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.composer-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* Composer textarea - enhanced styling */
+.composer-textarea {
+  width: 100%;
+  padding: 16px 18px;
+  border-radius: 12px;
+  border: 1px solid var(--gold);
+  background: rgba(14, 10, 8, 0.85);
+  color: var(--parchment);
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 1.5;
+  resize: vertical;
+  min-height: 100px;
+  box-shadow:
+    inset 0 2px 8px rgba(6, 4, 3, 0.6),
+    0 0 0 1px rgba(210, 177, 119, 0.1);
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.composer-textarea::placeholder {
   color: var(--parchment-muted);
+  font-style: italic;
+}
+
+.composer-textarea:focus {
+  outline: none;
+  border-color: var(--gold-bright);
+  box-shadow:
+    inset 0 2px 8px rgba(6, 4, 3, 0.5),
+    0 0 20px var(--gold-glow),
+    0 0 0 2px rgba(210, 177, 119, 0.25);
 }
 
 .composer {
@@ -754,18 +1286,44 @@ body::before {
   }
 }
 
-@media (max-width: 1100px) {
-  .matter-grid {
-    grid-template-columns: 1fr;
-  }
+/* ==========================================================================
+   Panel Enter Animation - Fade in with slight rise on page load
+   ========================================================================== */
 
-  .matter-actions {
-    padding-left: 0;
-    border-left: none;
+@keyframes panel-enter {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
   }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
 
-  .matter-header-actions {
-    justify-content: flex-start;
+/* ==========================================================================
+   Message Enter Animation - Slide in from left with brief glow
+   ========================================================================== */
+
+@keyframes message-enter {
+  0% {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+  50% {
+    opacity: 1;
+    transform: translateX(0);
+    box-shadow:
+      0 0 20px var(--gold-glow),
+      0 4px 16px rgba(0, 0, 0, 0.3),
+      inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0);
+    box-shadow:
+      0 4px 16px rgba(0, 0, 0, 0.3),
+      inset 0 1px 0 rgba(255, 255, 255, 0.03);
   }
 }
 
@@ -784,10 +1342,16 @@ body::before {
   }
 }
 
-.dialog-backdrop {
+/* ==========================================================================
+   Modal Dialogs - Ornate frames with decorative headers
+   Used for: Settings popup, Summon modal, and other dialogs
+   ========================================================================== */
+
+.dialog-backdrop,
+.settings-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(10, 8, 6, 0.85);
+  background: rgba(10, 8, 6, 0.9);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -795,122 +1359,134 @@ body::before {
   animation: fadeIn 0.2s ease;
 }
 
-.dialog-panel {
+.settings-backdrop {
+  z-index: 100;
+}
+
+.dialog-panel,
+.settings-popup {
   max-width: 520px;
   width: calc(100% - 48px);
-  padding: 24px;
   border-radius: var(--radius);
-  background: linear-gradient(160deg, rgba(33, 26, 20, 0.98), rgba(18, 13, 10, 0.94));
-  border: 1px solid rgba(210, 177, 119, 0.35);
-  box-shadow: 0 24px 48px rgba(6, 4, 3, 0.6);
+  background: linear-gradient(
+    160deg,
+    rgba(43, 35, 28, 0.98),
+    rgba(18, 13, 10, 0.99)
+  );
+  border: 2px solid var(--gold);
+  box-shadow:
+    0 0 40px rgba(0, 0, 0, 0.8),
+    0 0 20px var(--gold-glow),
+    0 24px 48px rgba(6, 4, 3, 0.7);
   animation: fadeRise 0.25s ease;
-}
-
-.dialog-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 18px;
-}
-
-.dialog-header h2 {
-  margin: 0;
-  font-family: var(--font-display);
-  font-weight: 600;
-  letter-spacing: 1px;
-}
-
-.dialog-close {
-  background: none;
-  border: none;
-  color: var(--parchment-muted);
-  font-size: 28px;
-  line-height: 1;
-  cursor: pointer;
-  padding: 4px 8px;
-  transition: color 0.2s ease;
-}
-
-.dialog-close:hover {
-  color: var(--parchment);
-}
-
-.dialog-form {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.dialog-actions {
-  display: flex;
-  gap: 12px;
-  justify-content: flex-end;
-  margin-top: 4px;
-}
-
-/* Settings popup */
-.settings-backdrop {
-  position: fixed;
-  inset: 0;
-  background: rgba(10, 8, 6, 0.85);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 100;
-  animation: fadeIn 0.2s ease;
+  overflow: hidden;
 }
 
 .settings-popup {
   max-width: 400px;
   width: calc(100% - 40px);
-  padding: 24px;
-  border-radius: var(--radius);
-  background: linear-gradient(160deg, rgba(33, 26, 20, 0.98), rgba(18, 13, 10, 0.94));
-  border: 1px solid rgba(210, 177, 119, 0.35);
-  box-shadow: 0 24px 48px rgba(6, 4, 3, 0.6);
-  animation: fadeRise 0.25s ease;
 }
 
+.dialog-header,
 .settings-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  margin-bottom: 20px;
+  justify-content: center;
+  position: relative;
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--gold);
+  background: linear-gradient(
+    180deg,
+    rgba(210, 177, 119, 0.12),
+    transparent
+  );
 }
 
+.dialog-header h2,
 .settings-header h2 {
   margin: 0;
   font-family: var(--font-display);
   font-weight: 600;
-  letter-spacing: 1px;
+  font-size: 18px;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: var(--gold-bright);
+  text-shadow: 0 0 20px var(--gold-glow);
 }
 
+.dialog-close,
 .settings-close {
+  position: absolute;
+  right: 16px;
+  top: 50%;
+  transform: translateY(-50%);
   background: none;
-  border: none;
-  color: var(--parchment-muted);
-  font-size: 28px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--gold);
+  font-size: 24px;
   line-height: 1;
   cursor: pointer;
-  padding: 4px 8px;
-  transition: color 0.2s ease;
+  padding: 4px 10px;
+  transition:
+    color 0.2s ease,
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
 }
 
+.dialog-close:hover,
 .settings-close:hover {
-  color: var(--parchment);
+  color: var(--gold-bright);
+  border-color: rgba(210, 177, 119, 0.4);
+  box-shadow: 0 0 12px var(--gold-glow);
 }
 
+.dialog-form,
 .settings-form {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  padding: 24px;
 }
 
+.dialog-actions,
 .settings-actions {
   display: flex;
   gap: 12px;
   justify-content: flex-end;
   margin-top: 8px;
+}
+
+/* Modal form inputs - enhanced styling matching overall aesthetic */
+.dialog-form .input,
+.dialog-form .textarea,
+.dialog-form .select,
+.settings-form .input,
+.settings-form .textarea,
+.settings-form .select {
+  border: 1px solid var(--gold);
+  background: rgba(14, 10, 8, 0.85);
+}
+
+.dialog-form .input:focus,
+.dialog-form .textarea:focus,
+.dialog-form .select:focus,
+.settings-form .input:focus,
+.settings-form .textarea:focus,
+.settings-form .select:focus {
+  border-color: var(--gold-bright);
+  box-shadow:
+    0 0 15px var(--gold-glow),
+    inset 0 2px 6px rgba(6, 4, 3, 0.5);
+}
+
+/* Modal label styling */
+.dialog-form .label,
+.settings-form .label {
+  color: var(--gold);
+  font-family: var(--font-display);
+  font-size: 13px;
+  letter-spacing: 1px;
 }
 
 @keyframes fadeIn {
@@ -919,5 +1495,84 @@ body::before {
   }
   to {
     opacity: 1;
+  }
+}
+
+/* ==========================================================================
+   Agent Badge - Sigil + Name with agent-specific color
+   ========================================================================== */
+
+.agent-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.agent-sigil {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  line-height: 1;
+}
+
+/* Agent-specific sigil glow colors */
+.agent-sigil.agent-claude {
+  color: var(--agent-claude);
+  text-shadow: 0 0 8px rgba(157, 124, 216, 0.6);
+}
+
+.agent-sigil.agent-codex {
+  color: var(--agent-codex);
+  text-shadow: 0 0 8px rgba(86, 184, 134, 0.6);
+}
+
+.agent-sigil.agent-gemini {
+  color: var(--agent-gemini);
+  text-shadow: 0 0 8px rgba(107, 158, 255, 0.6);
+}
+
+.agent-sigil.agent-human {
+  color: var(--agent-human);
+  text-shadow: 0 0 8px rgba(210, 177, 119, 0.6);
+}
+
+.agent-sigil.agent-other {
+  color: var(--agent-other);
+  text-shadow: 0 0 8px rgba(160, 160, 160, 0.6);
+}
+
+.agent-name {
+  font-family: var(--font-display);
+  letter-spacing: 0.6px;
+}
+
+.agent-name.agent-claude {
+  color: var(--agent-claude);
+}
+
+.agent-name.agent-codex {
+  color: var(--agent-codex);
+}
+
+.agent-name.agent-gemini {
+  color: var(--agent-gemini);
+}
+
+.agent-name.agent-human {
+  color: var(--agent-human);
+}
+
+.agent-name.agent-other {
+  color: var(--agent-other);
+}
+
+/* Accessibility: Reduce motion for users who prefer it */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
   }
 }

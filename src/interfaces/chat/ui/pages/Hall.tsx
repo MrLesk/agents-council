@@ -6,6 +6,36 @@ import { getSummonSettings, summonAgent, updateSummonSettings } from "../api";
 import type { CouncilContext } from "../hooks/useCouncil";
 import type { SummonSettingsResponse } from "../types";
 
+type AgentType = "claude" | "codex" | "gemini" | "human" | "other";
+
+const AGENT_SIGILS: Record<AgentType, string> = {
+  claude: "◈",
+  codex: "◆",
+  gemini: "✦",
+  human: "●",
+  other: "○",
+};
+
+function getAgentType(name: string): AgentType {
+  const lower = name.toLowerCase();
+  if (lower.includes("claude")) return "claude";
+  if (lower.includes("codex")) return "codex";
+  if (lower.includes("gemini")) return "gemini";
+  if (lower.includes("human")) return "human";
+  return "other";
+}
+
+function AgentBadge({ name }: { name: string }) {
+  const agentType = getAgentType(name);
+  const sigil = AGENT_SIGILS[agentType];
+  return (
+    <span className="agent-badge">
+      <span className={`agent-sigil agent-${agentType}`}>{sigil}</span>
+      <span className={`agent-name agent-${agentType}`}>{name}</span>
+    </span>
+  );
+}
+
 type HallProps = {
   name: string;
   council: CouncilContext;
@@ -67,6 +97,7 @@ export function Hall({ name, council, onNameChange }: HallProps) {
 
   const sessionLabel =
     sessionStatus === "none" ? "No session" : sessionStatus === "active" ? "In session" : "Concluded";
+  const sessionOrbClass = `status-orb status-orb-${sessionStatus}`;
 
   const handleStart = async () => {
     const success = await start(name, requestDraft);
@@ -179,10 +210,14 @@ export function Hall({ name, council, onNameChange }: HallProps) {
       <header className="hero">
         <div className="brand">
           <div className="brand-text">
-            <div className="brand-title">Agents Council — Hall</div>
+            <div className="brand-title">Council Hall</div>
           </div>
         </div>
         <div className="hero-controls">
+          <div className={`status-indicator status-indicator-${sessionStatus}`} title={sessionLabel}>
+            <span className={sessionOrbClass} aria-hidden="true" />
+            <span>{sessionLabel}</span>
+          </div>
           <div className="identity">
             You are <strong>{name}</strong>
           </div>
@@ -207,88 +242,93 @@ export function Hall({ name, council, onNameChange }: HallProps) {
       {notice ? <output className="notice">{notice}</output> : null}
 
       <main className="hall">
-        <section className="panel matter-panel">
-          <div className="panel-header">
-            <h2>The Matter Before the Council</h2>
-            <div className="matter-header-actions">
-              <div className={`status-pill status-${sessionStatus}`}>{sessionLabel}</div>
-            </div>
+        <section className="panel-primary matter-panel">
+          <div className="panel-primary-inner" />
+          <div className="panel-primary-corners" />
+          <div className="panel-header panel-header-centered">
+            <h2 className="panel-title-decorated panel-title-hero">
+              <span className="title-flourish">◆</span>
+              The Matter Before the Council
+              <span className="title-flourish">◆</span>
+            </h2>
           </div>
-          <div className={`matter-grid${isActive ? "" : " matter-grid-single"}`}>
-            <div className="matter-details">
-              {currentRequest ? (
-                <div className="request-card">
-                  <div className="request-card-label">Council Request</div>
+          <div className="matter-content">
+            {currentRequest ? (
+              <article className={`message-card panel-secondary agent-${getAgentType(currentRequest.created_by)}`}>
+                <header className="message-card-header">
+                  <AgentBadge name={currentRequest.created_by} />
+                  <span className="stamp">{formatTime(currentRequest.created_at)}</span>
+                </header>
+                <div className="message-card-content">
                   <p className="request-text">{currentRequest.content}</p>
-                  <div className="request-meta">
-                    <span className="meta-pill">Requested by {currentRequest.created_by}</span>
-                    <span className="meta-pill">{formatTime(currentRequest.created_at)}</span>
-                  </div>
-                  {isActive ? (
-                    <div className="request-actions">
-                      <button
-                        type="button"
-                        className="btn btn-ghost btn-summon"
-                        onClick={() => setShowSummonAgent(true)}
-                        disabled={busy || summonBusy}
-                      >
-                        Summon Claude
-                      </button>
-                    </div>
-                  ) : null}
                 </div>
-              ) : (
-                <p className="muted">No council is in session. Bring a matter before the wise.</p>
-              )}
-              {council.state?.session?.conclusion ? (
-                <div className="conclusion">
-                  <div className="solution-label">The Conclusion</div>
-                  <p className="conclusion-text">{council.state.session.conclusion.content}</p>
-                  <div className="meta-row">
-                    Spoken by {council.state.session.conclusion.author} at{" "}
-                    {formatDateTime(council.state.session.conclusion.created_at)}
-                  </div>
-                </div>
-              ) : null}
-              {!isActive ? (
-                <div className="matter-cta">
-                  <button type="button" className="btn btn-primary" onClick={() => setShowSummon(true)} disabled={busy}>
-                    {summonLabel}
-                  </button>
-                </div>
-              ) : null}
-            </div>
-            {isActive ? (
-              <div className="matter-actions">
-                <div className="seal-panel">
-                  <label className="label" htmlFor="conclusion-draft">
-                    Seal the Matter
-                  </label>
-                  <textarea
-                    id="conclusion-draft"
-                    className="textarea"
-                    value={conclusionDraft}
-                    onChange={(event) => setConclusionDraft(event.target.value)}
-                    placeholder="Speak the final word..."
-                    rows={3}
-                  />
-                  <button
-                    type="button"
-                    className="btn btn-danger"
-                    onClick={() => void handleClose()}
-                    disabled={busy || !conclusionDraft.trim() || !canCloseCouncil}
-                  >
-                    Seal the Matter
-                  </button>
+              </article>
+            ) : (
+              <p className="muted matter-empty">No council is in session. Bring a matter before the wise.</p>
+            )}
+            {council.state?.session?.conclusion ? (
+              <div className="conclusion">
+                <div className="solution-label">The Conclusion</div>
+                <p className="conclusion-text">{council.state.session.conclusion.content}</p>
+                <div className="meta-row">
+                  Spoken by <AgentBadge name={council.state.session.conclusion.author} /> at{" "}
+                  {formatDateTime(council.state.session.conclusion.created_at)}
                 </div>
               </div>
             ) : null}
           </div>
+          <div className="matter-actions-footer">
+            {isActive ? (
+              <>
+                <button
+                  type="button"
+                  className="btn-game"
+                  onClick={() => setShowSummonAgent(true)}
+                  disabled={busy || summonBusy}
+                >
+                  Summon Claude
+                </button>
+                <button
+                  type="button"
+                  className="btn-game btn-game-seal"
+                  onClick={() => void handleClose()}
+                  disabled={busy || !conclusionDraft.trim() || !canCloseCouncil}
+                >
+                  Seal the Matter
+                </button>
+              </>
+            ) : (
+              <button type="button" className="btn-game" onClick={() => setShowSummon(true)} disabled={busy}>
+                {summonLabel}
+              </button>
+            )}
+          </div>
+          {isActive ? (
+            <div className="matter-seal-input">
+              <label className="label" htmlFor="conclusion-draft">
+                Conclusion (to seal)
+              </label>
+              <textarea
+                id="conclusion-draft"
+                className="textarea"
+                value={conclusionDraft}
+                onChange={(event) => setConclusionDraft(event.target.value)}
+                placeholder="Speak the final word..."
+                rows={2}
+              />
+            </div>
+          ) : null}
         </section>
 
-        <section className="panel voices-panel">
+        <section className="panel-primary voices-panel">
+          <div className="panel-primary-inner" />
+          <div className="panel-primary-corners" />
           <div className="panel-header">
-            <h2>Voices of the Council</h2>
+            <h2 className="panel-title-decorated">
+              <span className="title-flourish">◆</span>
+              Voices of the Council
+              <span className="title-flourish">◆</span>
+            </h2>
             <div className="voices-header-actions">
               {!isIdle ? (
                 <span className="voices-count">
@@ -300,54 +340,66 @@ export function Hall({ name, council, onNameChange }: HallProps) {
           {isIdle ? (
             <div className="empty">No council is in session.</div>
           ) : (
-            <>
-              <div className="messages">
-                {feedback.length === 0 ? (
-                  <div className="empty">The council listens...</div>
-                ) : (
-                  feedback.map((entry, index) => (
-                    <article key={entry.id} className="message">
-                      <header className="message-header">
-                        <div className="message-meta">
-                          <span className="author">{entry.author}</span>
-                          <span className="meta">{formatTime(entry.created_at)}</span>
-                        </div>
+            <div className="messages">
+              {feedback.length === 0 ? (
+                <div className="empty">The council listens...</div>
+              ) : (
+                feedback.map((entry) => {
+                  const agentType = getAgentType(entry.author);
+                  return (
+                    <article key={entry.id} className={`message-card panel-secondary agent-${agentType}`}>
+                      <header className="message-card-header">
+                        <AgentBadge name={entry.author} />
+                        <span className="stamp">{formatTime(entry.created_at)}</span>
                       </header>
-                      <MarkdownPreview
-                        className="message-content"
-                        source={entry.content}
-                        skipHtml
-                        pluginsFilter={filterMarkdownPlugins}
-                        wrapperElement={{ "data-color-mode": "dark" }}
-                      />
-                      {index < feedback.length - 1 ? <hr className="message-divider" /> : null}
+                      <div className="message-card-content">
+                        <MarkdownPreview
+                          className="message-content"
+                          source={entry.content}
+                          skipHtml
+                          pluginsFilter={filterMarkdownPlugins}
+                          wrapperElement={{ "data-color-mode": "dark" }}
+                        />
+                      </div>
                     </article>
-                  ))
-                )}
-              </div>
-              {isActive ? (
-                <div className="composer">
-                  <label className="label" htmlFor="response-draft">
-                    Your Counsel
-                  </label>
-                  <textarea
-                    id="response-draft"
-                    className="textarea"
-                    value={responseDraft}
-                    onChange={(event) => setResponseDraft(event.target.value)}
-                    placeholder="Share your wisdom..."
-                    rows={4}
-                  />
-                  <div className="actions">
-                    <button type="button" className="btn btn-primary" onClick={() => void handleSend()} disabled={busy}>
-                      {speakLabel}
-                    </button>
-                  </div>
-                </div>
-              ) : null}
-            </>
+                  );
+                })
+              )}
+            </div>
           )}
         </section>
+
+        {isActive ? (
+          <section className="panel-primary composer-panel">
+            <div className="panel-primary-inner" />
+            <div className="panel-primary-corners" />
+            <div className="panel-header">
+              <h2 className="panel-title-decorated">
+                <span className="title-flourish">◆</span>
+                Your Counsel
+                <span className="title-flourish">◆</span>
+              </h2>
+            </div>
+            <textarea
+              id="response-draft"
+              className="composer-textarea"
+              value={responseDraft}
+              onChange={(event) => setResponseDraft(event.target.value)}
+              placeholder="Share your wisdom..."
+              rows={4}
+            />
+            <div className="composer-actions">
+              <button
+                type="button"
+                className="btn-game"
+                onClick={() => void handleSend()}
+                disabled={busy || !responseDraft.trim()}
+              >
+                {speakLabel}
+              </button>
+            </div>
+          </section>
+        ) : null}
       </main>
 
       {showSettings ? (
@@ -404,10 +456,10 @@ export function Hall({ name, council, onNameChange }: HallProps) {
                 rows={4}
               />
               <div className="dialog-actions">
-                <button type="button" className="btn btn-ghost" onClick={() => setShowSummon(false)}>
+                <button type="button" className="btn-ghost" onClick={() => setShowSummon(false)}>
                   Cancel
                 </button>
-                <button type="submit" className="btn btn-primary" disabled={busy || !requestDraft.trim()}>
+                <button type="submit" className="btn-game" disabled={busy || !requestDraft.trim()}>
                   Summon the Council
                 </button>
               </div>
@@ -499,10 +551,10 @@ export function Hall({ name, council, onNameChange }: HallProps) {
                   ))}
                 </select>
                 <div className="dialog-actions">
-                  <button type="button" className="btn btn-ghost" onClick={closeSummonAgentModal} disabled={summonBusy}>
+                  <button type="button" className="btn-ghost" onClick={closeSummonAgentModal} disabled={summonBusy}>
                     Cancel
                   </button>
-                  <button type="submit" className="btn btn-primary" disabled={summonBusy || !summonAgentName}>
+                  <button type="submit" className="btn-game" disabled={summonBusy || !summonAgentName}>
                     Summon Agent
                   </button>
                 </div>

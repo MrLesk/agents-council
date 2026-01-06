@@ -57,10 +57,10 @@ export function Settings({ currentName, onSave, onClose }: SettingsProps) {
             placeholder="Enter your name"
           />
           <div className="settings-actions">
-            <button type="button" className="btn btn-ghost" onClick={onClose}>
+            <button type="button" className="btn-ghost" onClick={onClose}>
               Cancel
             </button>
-            <button type="submit" className="btn btn-primary" disabled={!draftName.trim()}>
+            <button type="submit" className="btn-game" disabled={!draftName.trim()}>
               Save
             </button>
           </div>
