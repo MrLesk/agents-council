@@ -67,7 +67,6 @@ body {
   min-height: 100vh;
   font-family: var(--font-body);
   color: var(--parchment);
-  background-color: #0f0b08;
   background: radial-gradient(circle at top, rgba(216, 138, 71, 0.25), transparent 55%),
     radial-gradient(circle at 80% 10%, rgba(63, 141, 115, 0.2), transparent 50%),
     linear-gradient(160deg, #15100c 0%, #0f0b08 40%, #18110c 100%);
@@ -460,7 +459,7 @@ body::before {
 .voices-header-actions {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 18px;
   flex-wrap: wrap;
   justify-content: flex-end;
 }
@@ -475,6 +474,16 @@ body::before {
   display: flex;
   flex-direction: column;
   gap: 20px;
+}
+
+.seal-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.seal-panel .panel-header {
+  margin-bottom: 0;
 }
 
 /* ==========================================================================
@@ -618,7 +627,24 @@ body::before {
   box-shadow: 0 0 0 2px rgba(140, 59, 46, 0.25), inset 0 2px 6px rgba(6, 4, 3, 0.5);
 }
 
+.seal-helper {
+  margin: 0;
+  font-size: 14px;
+  color: var(--parchment-muted);
+  text-align: center;
+}
+
+.seal-actions {
+  display: flex;
+  justify-content: center;
+}
+
+.seal-actions .btn-game {
+  min-width: 200px;
+}
+
 .voices-panel {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -661,11 +687,13 @@ body::before {
 .conclusion {
   margin-top: 18px;
   padding: 16px 18px;
-  border-radius: 16px;
+  border-radius: 8px;
   background: linear-gradient(140deg, rgba(127, 198, 170, 0.32), rgba(18, 24, 21, 0.78));
   border: 1px solid rgba(127, 198, 170, 0.6);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 12px 22px rgba(12, 24, 18, 0.35);
-  border-left: 4px solid rgba(127, 198, 170, 0.85);
+  box-shadow:
+    inset 4px 0 0 rgba(127, 198, 170, 0.85),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 12px 22px rgba(12, 24, 18, 0.35);
 }
 
 .solution-label {
@@ -732,6 +760,74 @@ body::before {
 
 .select {
   cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  padding-right: 52px;
+  background:
+    linear-gradient(135deg, rgba(210, 177, 119, 0.08) 0%, transparent 50%),
+    rgba(14, 10, 8, 0.85);
+  background-color: rgba(14, 10, 8, 0.85);
+  position: relative;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+
+/* Dropdown arrow indicator */
+.select-wrapper {
+  position: relative;
+  display: block;
+}
+
+.select-wrapper::after {
+  content: "";
+  position: absolute;
+  right: 1px;
+  top: 1px;
+  bottom: 1px;
+  width: 44px;
+  background: linear-gradient(135deg, rgba(210, 177, 119, 0.15) 0%, rgba(210, 177, 119, 0.08) 100%);
+  border-left: 1px solid rgba(210, 177, 119, 0.3);
+  border-radius: 0 11px 11px 0;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.select-wrapper::before {
+  content: "";
+  position: absolute;
+  right: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 0;
+  height: 0;
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+  border-top: 7px solid rgba(210, 177, 119, 0.85);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.select:hover {
+  border-color: rgba(232, 195, 123, 0.75);
+  background:
+    linear-gradient(135deg, rgba(210, 177, 119, 0.12) 0%, transparent 50%),
+    rgba(20, 14, 10, 0.9);
+}
+
+.select-wrapper:hover::after {
+  background: linear-gradient(135deg, rgba(210, 177, 119, 0.22) 0%, rgba(210, 177, 119, 0.12) 100%);
+}
+
+.select-wrapper:hover::before {
+  border-top-color: rgba(232, 195, 123, 1);
+}
+
+.select option {
+  background: #1a1410;
+  color: var(--parchment);
+  padding: 12px;
 }
 
 .select-hint {
@@ -1457,6 +1553,49 @@ body::before {
   margin-top: 8px;
 }
 
+.settings-popup-wide {
+  max-width: 560px;
+}
+
+.settings-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid rgba(210, 177, 119, 0.15);
+}
+
+.settings-section:last-of-type {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.settings-section-title {
+  margin: 0 0 4px 0;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 13px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--gold);
+}
+
+.settings-hint {
+  margin: 4px 0 0 0;
+  font-size: 12px;
+  color: var(--parchment-muted);
+  line-height: 1.5;
+}
+
+.settings-hint code {
+  background: rgba(210, 177, 119, 0.1);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--gold);
+}
+
 /* Modal form inputs - enhanced styling matching overall aesthetic */
 .dialog-form .input,
 .dialog-form .textarea,
@@ -1567,12 +1706,138 @@ body::before {
   color: var(--agent-other);
 }
 
+/* ==========================================================================
+   Thinking Indicator - Animated dots while agent is summoned
+   ========================================================================== */
+
+.message-card.thinking {
+  opacity: 0.85;
+}
+
+.thinking-label {
+  color: var(--gold);
+  font-style: italic;
+}
+
+.thinking-indicator {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 0;
+}
+
+.thinking-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--gold);
+  opacity: 0.4;
+  animation: thinkingPulse 1.4s ease-in-out infinite;
+}
+
+.thinking-dot:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.thinking-dot:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes thinkingPulse {
+  0%,
+  80%,
+  100% {
+    opacity: 0.4;
+    transform: scale(1);
+  }
+  40% {
+    opacity: 1;
+    transform: scale(1.2);
+  }
+}
+
+/* ==========================================================================
+   Error Card - Summon failure state
+   ========================================================================== */
+
+.message-card.error-card {
+  border-color: var(--crimson);
+}
+
+.error-label {
+  color: var(--crimson);
+  font-weight: 600;
+}
+
+.error-text {
+  color: var(--parchment);
+  margin: 0 0 12px;
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+.btn-link {
+  background: none;
+  border: none;
+  color: var(--gold);
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+  cursor: pointer;
+  padding: 4px 0;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.btn-link:hover {
+  color: var(--gold-bright);
+}
+
+/* ==========================================================================
+   New Messages Toast - Scroll indicator for unread messages
+   ========================================================================== */
+
+.new-messages-toast {
+  position: absolute;
+  bottom: 16px;
+  right: 24px;
+  background: var(--gold);
+  color: var(--obsidian);
+  border: none;
+  border-radius: 20px;
+  padding: 8px 16px;
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  z-index: 10;
+  animation: toast-bounce 0.3s ease-out;
+}
+
+.new-messages-toast:hover {
+  background: var(--gold-bright);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.5);
+}
+
+@keyframes toast-bounce {
+  0% {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 /* Accessibility: Reduce motion for users who prefer it */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
-    animation-duration: 0.01ms !important;
-    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms;
+    animation-iteration-count: 1;
+    transition-duration: 0.01ms;
   }
 }

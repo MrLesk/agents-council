@@ -10,11 +10,13 @@ export type SummonAgentSettings = {
 export type SummonSettings = {
   lastUsedAgent: string | null;
   agents: Record<string, SummonAgentSettings>;
+  claudeCodePath: string | null;
 };
 
 export type SummonSettingsUpdate = {
   lastUsedAgent?: string | null;
   agents?: Record<string, Partial<SummonAgentSettings>>;
+  claudeCodePath?: string | null;
 };
 
 export async function loadSummonSettings(statePath?: string): Promise<SummonSettings> {
@@ -45,6 +47,7 @@ function createDefaultSummonSettings(): SummonSettings {
   return {
     lastUsedAgent: null,
     agents: {},
+    claudeCodePath: null,
   };
 }
 
@@ -60,6 +63,7 @@ function normalizeSummonSettings(input: unknown): SummonSettings {
   return {
     lastUsedAgent: normalizeOptionalString(input.lastUsedAgent),
     agents: normalizeAgentSettings(input.agents),
+    claudeCodePath: normalizeOptionalString(input.claudeCodePath),
   };
 }
 
@@ -104,9 +108,13 @@ function applyUpdate(current: SummonSettings, update: SummonSettingsUpdate): Sum
   const lastUsedAgent =
     "lastUsedAgent" in update ? normalizeOptionalString(update.lastUsedAgent) : current.lastUsedAgent;
 
+  const claudeCodePath =
+    "claudeCodePath" in update ? normalizeOptionalString(update.claudeCodePath) : current.claudeCodePath;
+
   return {
     lastUsedAgent,
     agents: nextAgents,
+    claudeCodePath,
   };
 }
 

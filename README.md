@@ -13,6 +13,8 @@ Status: <code>Experimental</code>
 
 ## 🏛️ Overview
 
+Designed for developers who already have active agent sessions and want them to collaborate without extra infrastructure.
+
 **Agents Council** is the simplest way to bridge and collaborate across AI Agent sessions like **Claude Code**, **Codex**, **Gemini**, **Cursor** or others. It allows your agents to combine their strengths to solve your most difficult tasks without leaving their current context.
 
 The most powerful way to use the council is by **connecting your existing, active sessions**. You can initialize them with the specific context you want, let them brainstorm or peer-review the matter, and then seamlessly take over the session once the council has finished.
@@ -21,8 +23,8 @@ Inspired by Andrej Karpathy's [LLM Council](https://github.com/karpathy/llm-coun
 
 ## ✨ Features
 
-- **Agent-to-Agent communication** via MCP stdio server (no A2A).
-- **Summon Claude**: Instantly summon a new instance of Claude into your council when needed. It uses the Claude Agent SDK and reuses your local Claude Code authentication.
+- **Centralized agent communication** via MCP stdio server (no complex peer-to-peer networking).
+- **Summon Claude**: Instantly summon a new instance of Claude into your council when needed. Reuses your local Claude Code authentication.
 - **Session Preservation**: Start agents with your specific context, let them collaborate, and resume when they are done.
 - **Human Participation**: A local chat UI to monitor or join the discussion.
 - **Private & Local**: State is stored on disk at `~/.agents-council/state.json`.
@@ -30,12 +32,14 @@ Inspired by Andrej Karpathy's [LLM Council](https://github.com/karpathy/llm-coun
 
 ---
 
-## 🚀 Installation
+## 🚀 Getting Started
 
 **Agents Council requires [Node.js](https://nodejs.org/) or [Bun](https://bun.sh/).**
 
 ### 1. MCP Mode (Zero Install)
 **No installation is needed** when using only the MCP mode. You can add the agents council MCP server to your agents using `npx` (or `bunx`). See the [MCP Setup](#-mcp-setup) section below for specific commands.
+
+If you only need agent-to-agent communication, skip to MCP Setup. Install the CLI only for the web UI or global `council` command.
 
 ### 2. Web Interface & CLI
 If you want to participate via the web interface or use the `council` command globally, install the package:
@@ -145,6 +149,35 @@ The chat UI runs on `localhost` and allows you to monitor the session in real-ti
 
 ---
 
+## 🪄 Summon Claude
+
+The Summon feature lets you bring a new Claude agent into your council session. This agent joins the discussion, reviews the matter and prior feedback, then contributes its own response.
+
+### Prerequisites
+
+- [Claude Code](https://github.com/anthropics/claude-code) must be installed and available in your PATH
+- Run `claude` at least once to authenticate
+
+### How it works
+
+1. A summoned Claude agent joins the active council session
+2. It reads the current request and any prior feedback
+3. It contributes a response using the council tools
+4. The agent is granted read-only access to the project (Read/Glob/Grep) plus council tools
+5. Other tools follow your Claude Code user permission settings
+
+### Advanced Configuration
+
+These settings are optional. By default, Agents Council looks for `claude` in your PATH.
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| **Claude Code Path** (Settings UI) | `claude` | Custom path to the Claude Code executable |
+| `CLAUDE_CODE_PATH` (env var) | `claude` | Alternative way to set the path |
+| `AGENTS_COUNCIL_SUMMON_DEBUG` | (unset) | Set to `1` to enable debug logging |
+
+---
+
 ## 🛠️ MCP Tools
 
 - `start_council`: Open a session with a request.
@@ -157,6 +190,8 @@ The chat UI runs on `localhost` and allows you to monitor the session in real-ti
 ---
 
 ## 🗺️ Roadmap
+
+Unchecked items are planned and may change based on feedback.
 
 - [x] v0.1 - MCP Council
 - [x] v0.2 - Chat UI

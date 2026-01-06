@@ -190,7 +190,9 @@ function registerTools(options: { hasDefaultAgentName: boolean; supportedModels:
       try {
         const resolvedName = agentName;
         if (!resolvedName) {
-          throw new Error("Agent name not set for get_current_session_data. Call start_council or join_council first.");
+          throw new Error(
+            "get_current_session_data needs a stored agent name. Call join_council (or start_council) once, then retry.",
+          );
         }
         const result = await service.getCurrentSessionData(
           mapGetCurrentSessionDataInput({ cursor: params.cursor, agent_name: resolvedName }),
@@ -269,7 +271,9 @@ function registerTools(options: { hasDefaultAgentName: boolean; supportedModels:
       try {
         const resolvedName = agentName;
         if (!resolvedName) {
-          throw new Error("Agent name not set for send_response. Call start_council or join_council first.");
+          throw new Error(
+            "send_response needs a stored agent name. Call join_council (or start_council) once, then retry.",
+          );
         }
         const result = await service.sendResponse(
           mapSendResponseInput({ content: params.content, agent_name: resolvedName }),

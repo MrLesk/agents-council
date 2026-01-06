@@ -5,6 +5,7 @@ import { loadSummonSettings, upsertSummonSettings } from "../../core/config/summ
 import { CouncilServiceImpl } from "../../core/services/council";
 import {
   SUPPORTED_SUMMON_AGENTS,
+  getClaudeCodeVersion,
   loadSupportedSummonModels,
   isSupportedSummonAgent,
   resolveDefaultSummonAgent,
@@ -55,6 +56,12 @@ type SummonSettingsResponse = {
   supported_agents: string[];
   supported_models: SummonModelInfoDto[];
   default_agent: string;
+  claude_code_path: string | null;
+  claude_code_version: string | null;
+};
+
+type GlobalSettingsResponse = {
+  claude_code_path: string | null;
 };
 
 export type ChatServer = {
@@ -107,6 +114,10 @@ export function startChatServer(options: ChatServerOptions): ChatServer {
                 return await handleUpdateSummonSettings(req);
               case "/summon-agent":
                 return await handleSummonAgent(req);
+              case "/get-settings":
+                return await handleGetSettings();
+              case "/update-settings":
+                return await handleUpdateSettings(req);
               default:
                 return jsonError(404, "Not found.");
             }
@@ -219,14 +230,17 @@ async function handleCloseCouncil(req: Request): Promise<Response> {
 }
 
 async function handleGetSummonSettings(): Promise<Response> {
-  const settings = await loadSummonSettings();
-  const supportedModels = await loadSupportedSummonModels();
+  const [settings, supportedModels, version] = await Promise.all([
+    loadSummonSettings(),
+    loadSupportedSummonModels(),
+    getClaudeCodeVersion(),
+  ]);
   const supportedModelDtos = supportedModels.map((model) => ({
     value: model.value,
     display_name: model.displayName,
     description: model.description,
   }));
-  return Response.json(mapSummonSettings(settings, supportedModelDtos));
+  return Response.json(mapSummonSettings(settings, supportedModelDtos, version));
 }
 
 async function handleUpdateSummonSettings(req: Request): Promise<Response> {
@@ -253,13 +267,13 @@ async function handleUpdateSummonSettings(req: Request): Promise<Response> {
   }
 
   const updated = await upsertSummonSettings(update);
-  const supportedModels = await loadSupportedSummonModels();
+  const [supportedModels, version] = await Promise.all([loadSupportedSummonModels(), getClaudeCodeVersion()]);
   const supportedModelDtos = supportedModels.map((model) => ({
     value: model.value,
     display_name: model.displayName,
     description: model.description,
   }));
-  return Response.json(mapSummonSettings(updated, supportedModelDtos));
+  return Response.json(mapSummonSettings(updated, supportedModelDtos, version));
 }
 
 async function handleSummonAgent(req: Request): Promise<Response> {
@@ -279,6 +293,30 @@ async function handleSummonAgent(req: Request): Promise<Response> {
   });
 
   return Response.json(mapSummonAgentResponse(result));
+}
+
+async function handleGetSettings(): Promise<Response> {
+  const settings = await loadSummonSettings();
+  const response: GlobalSettingsResponse = {
+    claude_code_path: settings.claudeCodePath,
+  };
+  return Response.json(response);
+}
+
+async function handleUpdateSettings(req: Request): Promise<Response> {
+  const body = await readJsonBody(req);
+  const claudeCodePath = optionalStringOrNull(body, "claude_code_path");
+
+  const update: { claudeCodePath?: string | null } = {};
+  if (claudeCodePath !== undefined) {
+    update.claudeCodePath = claudeCodePath;
+  }
+
+  const updated = await upsertSummonSettings(update);
+  const response: GlobalSettingsResponse = {
+    claude_code_path: updated.claudeCodePath,
+  };
+  return Response.json(response);
 }
 
 async function readJsonBody(req: Request): Promise<JsonRecord> {
@@ -333,7 +371,11 @@ function optionalStringOrNull(body: JsonRecord, field: string): string | null | 
   return trimmed.length > 0 ? trimmed : null;
 }
 
-function mapSummonSettings(settings: SummonSettings, supportedModels: SummonModelInfoDto[]): SummonSettingsResponse {
+function mapSummonSettings(
+  settings: SummonSettings,
+  supportedModels: SummonModelInfoDto[],
+  version: string | null,
+): SummonSettingsResponse {
   const agents: Record<string, SummonAgentSettingsDto> = {};
 
   for (const [agent, agentSettings] of Object.entries(settings.agents)) {
@@ -348,6 +390,8 @@ function mapSummonSettings(settings: SummonSettings, supportedModels: SummonMode
     supported_agents: [...SUPPORTED_SUMMON_AGENTS],
     supported_models: supportedModels,
     default_agent: resolveDefaultSummonAgent(settings.lastUsedAgent, SUPPORTED_SUMMON_AGENTS),
+    claude_code_path: settings.claudeCodePath,
+    claude_code_version: version,
   };
 }
 

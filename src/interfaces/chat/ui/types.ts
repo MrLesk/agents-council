@@ -89,6 +89,12 @@ export type SummonSettingsResponse = {
   supported_agents: string[];
   supported_models: SummonModelInfoDto[];
   default_agent: string;
+  claude_code_path: string | null;
+  claude_code_version: string | null;
+};
+
+export type GlobalSettingsResponse = {
+  claude_code_path: string | null;
 };
 
 export type SummonAgentResponse = {

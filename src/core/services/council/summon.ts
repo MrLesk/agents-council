@@ -49,11 +49,94 @@ export type SummonModelInfo = {
   description: string;
 };
 
+type SummonResultMessage = {
+  subtype?: string;
+  errors?: string[];
+  result?: string;
+  is_error?: boolean;
+  error?: string;
+};
+
 const SUMMON_SERVER_NAME = "council";
 const SUMMON_TOOL_PREFIX = "mcp__council__";
 const READ_ONLY_TOOLS = new Set(["Read", "Glob", "Grep"]);
 const SUMMON_DEBUG_ENV = "AGENTS_COUNCIL_SUMMON_DEBUG";
+const CLAUDE_CODE_PATH_ENV = "CLAUDE_CODE_PATH";
 const MODEL_CACHE_TTL_MS = 5 * 60 * 1000;
+
+function isAbsolutePath(p: string): boolean {
+  // Unix absolute path or Windows absolute path (C:\... or \\...)
+  return p.startsWith("/") || /^[a-zA-Z]:[\\/]/.test(p) || p.startsWith("\\\\");
+}
+
+async function resolveClaudePath(command: string): Promise<string> {
+  // If already an absolute path, return as-is
+  if (isAbsolutePath(command)) {
+    return command;
+  }
+
+  // Resolve command to absolute path using platform-appropriate command
+  // This is necessary because the SDK validates "native binary" when given a simple command name,
+  // but accepts npm-installed claude when given the full absolute path
+  const isWindows = process.platform === "win32";
+  const whichCommand = isWindows ? "where" : "which";
+
+  try {
+    const proc = Bun.spawn([whichCommand, command], {
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const output = await new Response(proc.stdout).text();
+    // `where` on Windows may return multiple lines; take the first one
+    const resolved = output.split(/\r?\n/)[0]?.trim() ?? "";
+    if (resolved.length > 0 && isAbsolutePath(resolved)) {
+      return resolved;
+    }
+  } catch {
+    // Fall through to return original command
+  }
+
+  return command;
+}
+
+async function getClaudeCodeExecutablePath(): Promise<string> {
+  // Priority: config > env var > default "claude"
+  const settings = await loadSummonSettings();
+  if (settings.claudeCodePath) {
+    return resolveClaudePath(settings.claudeCodePath);
+  }
+  const envPath = process.env[CLAUDE_CODE_PATH_ENV]?.trim();
+  if (envPath && envPath.length > 0) {
+    return resolveClaudePath(envPath);
+  }
+  return resolveClaudePath("claude");
+}
+
+let cachedVersion: string | null = null;
+
+export async function getClaudeCodeVersion(): Promise<string | null> {
+  if (cachedVersion !== null) {
+    return cachedVersion;
+  }
+
+  const claudePath = await getClaudeCodeExecutablePath();
+  try {
+    const proc = Bun.spawn([claudePath, "--version"], {
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const output = await new Response(proc.stdout).text();
+    // Output format: "2.0.76 (Claude Code)"
+    const match = output.match(/^([\d.]+)/);
+    if (match?.[1]) {
+      cachedVersion = match[1];
+      return cachedVersion;
+    }
+  } catch {
+    // Ignore errors
+  }
+  return null;
+}
 
 let cachedModels: SummonModelInfo[] | null = null;
 let cachedModelsAt = 0;
@@ -76,9 +159,11 @@ export async function loadSupportedSummonModels(): Promise<SummonModelInfo[]> {
     return cachedModels;
   }
 
+  const claudeCodePath = await getClaudeCodeExecutablePath();
   const response = query({
     prompt: createPromptMessages("List supported Claude Code models."),
     options: {
+      pathToClaudeCodeExecutable: claudeCodePath,
       maxTurns: 0,
       permissionMode: "default",
       settingSources: ["user"],
@@ -108,11 +193,8 @@ export async function loadSupportedSummonModels(): Promise<SummonModelInfo[]> {
   } catch {
     return [];
   } finally {
-    try {
-      await response.interrupt();
-    } catch {
-      // Ignore interrupt failures.
-    }
+    // Fire-and-forget interrupt - don't await as it may hang
+    response.interrupt().catch(() => {});
   }
 }
 
@@ -168,10 +250,12 @@ export async function summonClaudeAgent(input: SummonAgentInput): Promise<Summon
   });
 
   const prompt = buildSummonPrompt();
+  const claudeCodePath = await getClaudeCodeExecutablePath();
 
   const response = query({
     prompt: createPromptMessages(prompt),
     options: {
+      pathToClaudeCodeExecutable: claudeCodePath,
       mcpServers: {
         [SUMMON_SERVER_NAME]: councilServer,
       },
@@ -191,22 +275,28 @@ export async function summonClaudeAgent(input: SummonAgentInput): Promise<Summon
     },
   });
 
-  let resultMessage: { subtype?: string; errors?: string[]; result?: string } | null = null;
-  for await (const message of response) {
-    await appendSummonLog({ event: "sdk_message", data: message });
-    if (message.type === "result") {
-      resultMessage = message;
+  let resultMessage: SummonResultMessage | null = null;
+  try {
+    for await (const message of response) {
+      await appendSummonLog({ event: "sdk_message", data: message });
+      if (message.type === "result") {
+        resultMessage = message as SummonResultMessage;
+      }
     }
+  } catch (error) {
+    const details = resolveSummonResultError(resultMessage) ?? getErrorMessage(error);
+    await appendSummonLog({ event: "summon_error", data: { message: details } });
+    throw new Error(details);
   }
 
   if (!resultMessage) {
     await appendSummonLog({ event: "summon_error", data: { message: "No result message." } });
     throw new Error("Summon failed to return a result.");
   }
-  if (resultMessage.subtype !== "success") {
-    const details = resultMessage.errors?.join("; ") ?? "Claude summon failed.";
-    await appendSummonLog({ event: "summon_error", data: { message: details } });
-    throw new Error(details);
+  const resultError = resolveSummonResultError(resultMessage);
+  if (resultError) {
+    await appendSummonLog({ event: "summon_error", data: { message: resultError } });
+    throw new Error(resultError);
   }
 
   const updated = await store.load();
@@ -369,4 +459,25 @@ function normalizeOptionalString(value: string | null | undefined): string | nul
   }
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
+}
+
+function resolveSummonResultError(resultMessage: SummonResultMessage | null): string | null {
+  if (!resultMessage) {
+    return null;
+  }
+  const resultText = normalizeOptionalString(resultMessage.result);
+  const errorText = normalizeOptionalString(resultMessage.error);
+  const errorsText = normalizeOptionalString(resultMessage.errors?.filter(Boolean).join("; "));
+
+  if (resultMessage.is_error) {
+    return resultText ?? errorsText ?? errorText ?? "Claude summon failed.";
+  }
+  if (resultMessage.subtype && resultMessage.subtype !== "success") {
+    return errorsText ?? resultText ?? errorText ?? "Claude summon failed.";
+  }
+  return null;
+}
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : "Claude summon failed.";
 }

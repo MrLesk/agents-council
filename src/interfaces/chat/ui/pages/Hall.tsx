@@ -1,4 +1,4 @@
-import { type ChangeEvent, useCallback, useEffect, useState } from "react";
+import { type ChangeEvent, useCallback, useEffect, useRef, useState } from "react";
 import MarkdownPreview, { type MarkdownPreviewProps } from "@uiw/react-markdown-preview";
 
 import { Settings } from "../components/Settings";
@@ -69,6 +69,11 @@ export function Hall({ name, council, onNameChange }: HallProps) {
   const [summonBusy, setSummonBusy] = useState(false);
   const [summonError, setSummonError] = useState<string | null>(null);
   const [summonNotice, setSummonNotice] = useState<string | null>(null);
+  const [pendingSummon, setPendingSummon] = useState<{ agent: string; startedAt: number; error?: string } | null>(null);
+  const [hasNewMessages, setHasNewMessages] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const prevFeedbackLengthRef = useRef(0);
 
   const {
     connection,
@@ -125,7 +130,22 @@ export function Hall({ name, council, onNameChange }: HallProps) {
     const agent = nextAgent ?? settings.default_agent ?? settings.supported_agents[0] ?? "";
     setSummonAgentName(agent);
     const agentSettings = settings.agents[agent];
-    setSummonModel(agentSettings?.model ?? "");
+    const defaultModel = settings.supported_models[0]?.value ?? "default";
+    setSummonModel(agentSettings?.model ?? defaultModel);
+  }, []);
+
+  const isNearBottom = useCallback(() => {
+    const container = messagesContainerRef.current;
+    if (!container) return true;
+    const threshold = 150; // pixels from bottom
+    return container.scrollHeight - container.scrollTop - container.clientHeight < threshold;
+  }, []);
+
+  const scrollToBottom = useCallback(() => {
+    setTimeout(() => {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+      setHasNewMessages(false);
+    }, 100);
   }, []);
 
   useEffect(() => {
@@ -161,6 +181,67 @@ export function Hall({ name, council, onNameChange }: HallProps) {
     };
   }, [showSummonAgent, applySummonDefaults]);
 
+  // Clear pending summon when the agent responds
+  useEffect(() => {
+    if (!pendingSummon) return;
+
+    const agentResponded = feedback.some(
+      (entry) =>
+        entry.author.toLowerCase() === pendingSummon.agent.toLowerCase() &&
+        new Date(entry.created_at).getTime() > pendingSummon.startedAt
+    );
+
+    if (agentResponded) {
+      setPendingSummon(null);
+      // Don't auto-scroll - toast will notify user of new messages
+    }
+  }, [feedback, pendingSummon]);
+
+  // Timeout for pending summon (90 seconds) - only for thinking state, not errors
+  useEffect(() => {
+    if (!pendingSummon || pendingSummon.error) return;
+
+    const timeout = setTimeout(() => {
+      setPendingSummon((prev) =>
+        prev && !prev.error ? { ...prev, error: "Summon timed out. Claude may still respond." } : prev
+      );
+    }, 90000);
+
+    return () => clearTimeout(timeout);
+  }, [pendingSummon]);
+
+  // Detect new messages from WebSocket updates (not from our own summon)
+  useEffect(() => {
+    const prevLength = prevFeedbackLengthRef.current;
+    const currentLength = feedback.length;
+
+    // Update the ref for next comparison
+    prevFeedbackLengthRef.current = currentLength;
+
+    // If we have a pending summon, let that effect handle scrolling
+    if (pendingSummon) return;
+
+    // If new messages arrived and user is not near bottom, show toast
+    if (currentLength > prevLength && prevLength > 0 && !isNearBottom()) {
+      setHasNewMessages(true);
+    }
+  }, [feedback.length, pendingSummon, isNearBottom]);
+
+  // Clear new messages toast when user scrolls to bottom
+  useEffect(() => {
+    const container = messagesContainerRef.current;
+    if (!container || !hasNewMessages) return;
+
+    const handleScroll = () => {
+      if (isNearBottom()) {
+        setHasNewMessages(false);
+      }
+    };
+
+    container.addEventListener("scroll", handleScroll, { passive: true });
+    return () => container.removeEventListener("scroll", handleScroll);
+  }, [hasNewMessages, isNearBottom]);
+
   const handleSummonAgentChange = (event: ChangeEvent<HTMLSelectElement>) => {
     const nextAgent = event.target.value;
     setSummonNotice(null);
@@ -174,12 +255,9 @@ export function Hall({ name, council, onNameChange }: HallProps) {
 
   const handleSummonAgent = async () => {
     if (!summonAgentName) {
-        setSummonError("Select an agent to summon.");
+      setSummonError("Select an agent to summon.");
       return;
     }
-    setSummonBusy(true);
-    setSummonError(null);
-    setSummonNotice(null);
 
     const model = summonModel.trim();
     const payload = {
@@ -187,13 +265,29 @@ export function Hall({ name, council, onNameChange }: HallProps) {
       model: model.length > 0 ? model : null,
     };
 
+    // Show brief loading state on button
+    setSummonBusy(true);
+    setSummonError(null);
+    setSummonNotice(null);
+
     try {
+      // Save settings first
       const updatedSettings = await updateSummonSettings(payload);
       setSummonSettings(updatedSettings);
-      const result = await summonAgent(payload);
-      setSummonNotice(`Summoned ${result.agent}. Response recorded.`);
+
+      // Show loading animation for 200ms before closing modal
+      await new Promise((resolve) => setTimeout(resolve, 200));
+
+      // Close modal and show thinking state
+      setShowSummonAgent(false);
+      setPendingSummon({ agent: summonAgentName, startedAt: Date.now() });
+
+      // Run summon in background
+      await summonAgent(payload);
     } catch (err) {
-      setSummonError(err instanceof Error ? err.message : "Unable to summon agent.");
+      // Show error inline where the thinking indicator was
+      const message = err instanceof Error ? err.message : "Unable to summon agent.";
+      setPendingSummon((prev) => (prev ? { ...prev, error: message } : null));
     } finally {
       setSummonBusy(false);
     }
@@ -277,45 +371,11 @@ export function Hall({ name, council, onNameChange }: HallProps) {
               </div>
             ) : null}
           </div>
-          <div className="matter-actions-footer">
-            {isActive ? (
-              <>
-                <button
-                  type="button"
-                  className="btn-game"
-                  onClick={() => setShowSummonAgent(true)}
-                  disabled={busy || summonBusy}
-                >
-                  Summon Claude
-                </button>
-                <button
-                  type="button"
-                  className="btn-game btn-game-seal"
-                  onClick={() => void handleClose()}
-                  disabled={busy || !conclusionDraft.trim() || !canCloseCouncil}
-                >
-                  Seal the Matter
-                </button>
-              </>
-            ) : (
+          {!isActive ? (
+            <div className="matter-actions-footer">
               <button type="button" className="btn-game" onClick={() => setShowSummon(true)} disabled={busy}>
                 {summonLabel}
               </button>
-            )}
-          </div>
-          {isActive ? (
-            <div className="matter-seal-input">
-              <label className="label" htmlFor="conclusion-draft">
-                Conclusion (to seal)
-              </label>
-              <textarea
-                id="conclusion-draft"
-                className="textarea"
-                value={conclusionDraft}
-                onChange={(event) => setConclusionDraft(event.target.value)}
-                placeholder="Speak the final word..."
-                rows={2}
-              />
             </div>
           ) : null}
         </section>
@@ -335,38 +395,94 @@ export function Hall({ name, council, onNameChange }: HallProps) {
                   {feedback.length} {feedback.length === 1 ? "voice" : "voices"}
                 </span>
               ) : null}
+              {isActive ? (
+                <button
+                  type="button"
+                  className="btn-game"
+                  onClick={() => setShowSummonAgent(true)}
+                  disabled={busy || summonBusy}
+                >
+                  Summon Agent
+                </button>
+              ) : null}
             </div>
           </div>
           {isIdle ? (
             <div className="empty">No council is in session.</div>
           ) : (
-            <div className="messages">
-              {feedback.length === 0 ? (
+            <div className="messages" ref={messagesContainerRef}>
+              {feedback.length === 0 && !pendingSummon ? (
                 <div className="empty">The council listens...</div>
               ) : (
-                feedback.map((entry) => {
-                  const agentType = getAgentType(entry.author);
-                  return (
-                    <article key={entry.id} className={`message-card panel-secondary agent-${agentType}`}>
-                      <header className="message-card-header">
-                        <AgentBadge name={entry.author} />
-                        <span className="stamp">{formatTime(entry.created_at)}</span>
-                      </header>
-                      <div className="message-card-content">
-                        <MarkdownPreview
-                          className="message-content"
-                          source={entry.content}
-                          skipHtml
-                          pluginsFilter={filterMarkdownPlugins}
-                          wrapperElement={{ "data-color-mode": "dark" }}
-                        />
-                      </div>
-                    </article>
-                  );
-                })
+                <>
+                  {feedback.map((entry) => {
+                    const agentType = getAgentType(entry.author);
+                    return (
+                      <article key={entry.id} className={`message-card panel-secondary agent-${agentType}`}>
+                        <header className="message-card-header">
+                          <AgentBadge name={entry.author} />
+                          <span className="stamp">{formatTime(entry.created_at)}</span>
+                        </header>
+                        <div className="message-card-content">
+                          <MarkdownPreview
+                            className="message-content"
+                            source={entry.content}
+                            skipHtml
+                            pluginsFilter={filterMarkdownPlugins}
+                            wrapperElement={{ "data-color-mode": "dark" }}
+                          />
+                        </div>
+                      </article>
+                    );
+                  })}
+                  {pendingSummon ? (
+                    pendingSummon.error ? (
+                      <article className={`message-card panel-secondary agent-${getAgentType(pendingSummon.agent)} error-card`}>
+                        <header className="message-card-header">
+                          <AgentBadge name={pendingSummon.agent} />
+                          <span className="stamp error-label">failed</span>
+                        </header>
+                        <div className="message-card-content">
+                          <p className="error-text">{pendingSummon.error}</p>
+                          <button
+                            type="button"
+                            className="btn-link"
+                            onClick={() => setPendingSummon(null)}
+                          >
+                            Dismiss
+                          </button>
+                        </div>
+                      </article>
+                    ) : (
+                      <article className={`message-card panel-secondary agent-${getAgentType(pendingSummon.agent)} thinking`}>
+                        <header className="message-card-header">
+                          <AgentBadge name={pendingSummon.agent} />
+                          <span className="stamp thinking-label">summoning...</span>
+                        </header>
+                        <div className="message-card-content">
+                          <div className="thinking-indicator">
+                            <span className="thinking-dot" />
+                            <span className="thinking-dot" />
+                            <span className="thinking-dot" />
+                          </div>
+                        </div>
+                      </article>
+                    )
+                  ) : null}
+                </>
               )}
+              <div ref={messagesEndRef} />
             </div>
           )}
+          {hasNewMessages ? (
+            <button
+              type="button"
+              className="new-messages-toast"
+              onClick={scrollToBottom}
+            >
+              ↓ New messages
+            </button>
+          ) : null}
         </section>
 
         {isActive ? (
@@ -396,6 +512,44 @@ export function Hall({ name, council, onNameChange }: HallProps) {
                 disabled={busy || !responseDraft.trim()}
               >
                 {speakLabel}
+              </button>
+            </div>
+          </section>
+        ) : null}
+
+        {isActive ? (
+          <section className="panel-primary seal-panel">
+            <div className="panel-primary-inner" />
+            <div className="panel-primary-corners" />
+            <div className="panel-header panel-header-centered">
+              <h2 className="panel-title-decorated">
+                <span className="title-flourish">◆</span>
+                Seal the Matter
+                <span className="title-flourish">◆</span>
+              </h2>
+            </div>
+            <p className="seal-helper">Seal only after the council agrees on a final answer.</p>
+            <div className="matter-seal-input">
+              <label className="label" htmlFor="conclusion-draft">
+                Conclusion (to seal)
+              </label>
+              <textarea
+                id="conclusion-draft"
+                className="textarea"
+                value={conclusionDraft}
+                onChange={(event) => setConclusionDraft(event.target.value)}
+                placeholder="Speak the final word..."
+                rows={2}
+              />
+            </div>
+            <div className="seal-actions">
+              <button
+                type="button"
+                className="btn-game btn-game-seal"
+                onClick={() => void handleClose()}
+                disabled={busy || !conclusionDraft.trim() || !canCloseCouncil}
+              >
+                Seal the Matter
               </button>
             </div>
           </section>
@@ -511,45 +665,54 @@ export function Hall({ name, council, onNameChange }: HallProps) {
                 <label className="label" htmlFor="summon-agent">
                   Agent
                 </label>
-                <select
-                  id="summon-agent"
-                  className="select"
-                  value={summonAgentName}
-                  onChange={handleSummonAgentChange}
-                  disabled={summonBusy}
-                >
-                  {summonSettings.supported_agents.map((agent) => (
-                    <option key={agent} value={agent}>
-                      {agent}
-                    </option>
-                  ))}
-                </select>
+                <div className="select-wrapper">
+                  <select
+                    id="summon-agent"
+                    className="select"
+                    value={summonAgentName}
+                    onChange={handleSummonAgentChange}
+                    disabled={summonBusy}
+                  >
+                    {summonSettings.supported_agents.map((agent) => {
+                      const displayName =
+                        agent === "Claude" && summonSettings.claude_code_version
+                          ? `Claude Code v${summonSettings.claude_code_version}`
+                          : agent;
+                      return (
+                        <option key={agent} value={agent}>
+                          {displayName}
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
                 <label className="label" htmlFor="summon-model">
                   Model
                 </label>
                 {summonSettings.supported_models.length > 0 &&
                 summonModel &&
                 !summonSettings.supported_models.some((model) => model.value === summonModel) ? (
-                  <div className="select-hint">Saved model isn’t in the current list.</div>
+                  <div className="select-hint">Saved model isn't in the current list.</div>
                 ) : null}
-                <select
-                  id="summon-model"
-                  className="select"
-                  value={summonModel}
-                  onChange={(event) => setSummonModel(event.target.value)}
-                  disabled={summonBusy}
-                >
-                  <option value="">Default (Claude Code)</option>
-                  {summonModel &&
-                  !summonSettings.supported_models.some((model) => model.value === summonModel) ? (
-                    <option value={summonModel}>{`Saved: ${summonModel}`}</option>
-                  ) : null}
-                  {summonSettings.supported_models.map((model) => (
-                    <option key={model.value} value={model.value}>
-                      {model.display_name}
-                    </option>
-                  ))}
-                </select>
+                <div className="select-wrapper">
+                  <select
+                    id="summon-model"
+                    className="select"
+                    value={summonModel}
+                    onChange={(event) => setSummonModel(event.target.value)}
+                    disabled={summonBusy}
+                  >
+                    {summonModel &&
+                    !summonSettings.supported_models.some((model) => model.value === summonModel) ? (
+                      <option value={summonModel}>{`Saved: ${summonModel}`}</option>
+                    ) : null}
+                    {summonSettings.supported_models.map((model) => (
+                      <option key={model.value} value={model.value}>
+                        {model.description || model.display_name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
                 <div className="dialog-actions">
                   <button type="button" className="btn-ghost" onClick={closeSummonAgentModal} disabled={summonBusy}>
                     Cancel

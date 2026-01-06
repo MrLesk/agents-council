@@ -1,6 +1,7 @@
 import type {
   CloseCouncilResponse,
   GetCurrentSessionDataResponse,
+  GlobalSettingsResponse,
   SendResponseResponse,
   StartCouncilResponse,
   SummonAgentResponse,
@@ -81,6 +82,14 @@ export async function summonAgent(payload: {
   model?: string | null;
 }): Promise<SummonAgentResponse> {
   return postJson<SummonAgentResponse>("/summon-agent", payload);
+}
+
+export async function getSettings(): Promise<GlobalSettingsResponse> {
+  return postJson<GlobalSettingsResponse>("/get-settings", {});
+}
+
+export async function updateSettings(payload: { claude_code_path?: string | null }): Promise<GlobalSettingsResponse> {
+  return postJson<GlobalSettingsResponse>("/update-settings", payload);
 }
 
 export function resolveWebSocketUrl(): string {
