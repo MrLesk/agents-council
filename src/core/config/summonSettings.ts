@@ -5,7 +5,6 @@ import { resolveCouncilStatePath } from "../state/path";
 
 export type SummonAgentSettings = {
   model: string | null;
-  reasoningEffort: string | null;
 };
 
 export type SummonSettings = {
@@ -78,7 +77,6 @@ function normalizeAgentSettings(input: unknown): Record<string, SummonAgentSetti
 
     agents[agentName] = {
       model: normalizeOptionalString(rawSettings.model),
-      reasoningEffort: normalizeOptionalString(rawSettings.reasoningEffort),
     };
   }
 
@@ -94,16 +92,11 @@ function applyUpdate(current: SummonSettings, update: SummonSettingsUpdate): Sum
         continue;
       }
 
-      const existing = nextAgents[agentName] ?? { model: null, reasoningEffort: null };
+      const existing = nextAgents[agentName] ?? { model: null };
       const model = "model" in agentUpdate ? normalizeOptionalString(agentUpdate.model) : existing.model;
-      const reasoningEffort =
-        "reasoningEffort" in agentUpdate
-          ? normalizeOptionalString(agentUpdate.reasoningEffort)
-          : existing.reasoningEffort;
 
       nextAgents[agentName] = {
         model,
-        reasoningEffort,
       };
     }
   }

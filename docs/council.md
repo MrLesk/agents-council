@@ -70,15 +70,26 @@ Disable auto-open:
 The MCP tools are meant for AI agent clients (Claude/Codex/Gemini/etc). The chat UI is the human-facing
 interface for participating in the same local council session.
 
+From the chat UI you can also summon a Claude agent into an active council. The summon modal lets you
+select agent/model, and those selections persist between runs.
+
 ## Tools (v1)
 
-The MCP server exposes five tools:
+The MCP server exposes six tools:
 
 - `start_council` (starts a new session and records the council request)
 - `join_council` (first-time entry point that returns the session request and responses)
 - `get_current_session_data` (returns the session request and responses, optionally from a cursor)
 - `close_council` (closes the current session with a conclusion)
 - `send_response` (adds a response to the current request)
+- `summon_agent` (summons a Claude agent into the active council)
+
+`summon_agent` inputs:
+- `agent` (required, enum)
+- `model` (optional override)
+
+If `agent` is omitted by the caller, the last used agent is selected when available; otherwise the
+alphabetical default is used. When `model` is omitted, the saved settings are used.
 
 `start_council` and `join_council` require an `agent_name` unless the server was started with
 `--agent-name/-n`. The server may append a suffix (`#1`, `#2`, ...) if the name is already in use;
@@ -238,7 +249,7 @@ Summon settings are stored alongside state at:
 ~/.agents-council/config.json
 ```
 
-The config persists the last used agent plus model and reasoning effort selections.
+The config persists the last used agent plus model selections.
 
 Override with:
 
@@ -247,6 +258,12 @@ AGENTS_COUNCIL_STATE_PATH=/path/to/state.json
 ```
 
 The config path uses the same directory as the resolved state path.
+
+Enable summon debug logging (writes `summon-debug.log` in the current working directory):
+
+```
+AGENTS_COUNCIL_SUMMON_DEBUG=1
+```
 
 ## SDK Requirement
 

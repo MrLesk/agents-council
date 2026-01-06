@@ -10,6 +10,8 @@ import type {
   RequestDto,
   SendResponseParams,
   SendResponseResponse,
+  SummonAgentParams,
+  SummonAgentResponse,
   SessionDto,
   StartCouncilParams,
   StartCouncilResponse,
@@ -30,6 +32,7 @@ import type {
   StartCouncilInput,
   StartCouncilResult,
 } from "../../core/services/council/types";
+import type { SummonAgentInput, SummonAgentResult } from "../../core/services/council/summon";
 
 export function mapStartCouncilInput(params: StartCouncilParams & { agent_name: string }): StartCouncilInput {
   return {
@@ -96,6 +99,21 @@ export function mapSendResponseResponse(result: SendResponseResult): SendRespons
     agent_name: result.agentName,
     feedback: mapFeedback(result.feedback),
     state: mapCouncilState(result.state),
+  };
+}
+
+export function mapSummonAgentInput(params: SummonAgentParams): SummonAgentInput {
+  return {
+    agent: params.agent,
+    model: params.model,
+  };
+}
+
+export function mapSummonAgentResponse(result: SummonAgentResult): SummonAgentResponse {
+  return {
+    agent: result.agent,
+    model: result.model,
+    feedback: mapFeedback(result.feedback),
   };
 }
 

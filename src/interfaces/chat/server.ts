@@ -1,6 +1,15 @@
 import type { Server } from "bun";
 
+import type { SummonSettings } from "../../core/config/summonSettings";
+import { loadSummonSettings, upsertSummonSettings } from "../../core/config/summonSettings";
 import { CouncilServiceImpl } from "../../core/services/council";
+import {
+  SUPPORTED_SUMMON_AGENTS,
+  loadSupportedSummonModels,
+  isSupportedSummonAgent,
+  resolveDefaultSummonAgent,
+  summonClaudeAgent,
+} from "../../core/services/council/summon";
 import { FileCouncilStateStore } from "../../core/state/fileStateStore";
 import type { CouncilStateWatcher } from "../../core/state/watcher";
 import { watchCouncilState } from "../../core/state/watcher";
@@ -12,6 +21,7 @@ import {
   mapGetCurrentSessionDataResponse,
   mapSendResponseInput,
   mapSendResponseResponse,
+  mapSummonAgentResponse,
   mapStartCouncilInput,
   mapStartCouncilResponse,
 } from "../mcp/mapper";
@@ -29,6 +39,23 @@ type ChatServerOptions = {
 };
 
 type JsonRecord = Record<string, unknown>;
+type SummonAgentSettingsDto = {
+  model: string | null;
+};
+
+type SummonModelInfoDto = {
+  value: string;
+  display_name: string;
+  description: string;
+};
+
+type SummonSettingsResponse = {
+  last_used_agent: string | null;
+  agents: Record<string, SummonAgentSettingsDto>;
+  supported_agents: string[];
+  supported_models: SummonModelInfoDto[];
+  default_agent: string;
+};
 
 export type ChatServer = {
   server: Server<undefined>;
@@ -74,6 +101,12 @@ export function startChatServer(options: ChatServerOptions): ChatServer {
                 return await handleSendResponse(req);
               case "/close-council":
                 return await handleCloseCouncil(req);
+              case "/get-summon-settings":
+                return await handleGetSummonSettings();
+              case "/update-summon-settings":
+                return await handleUpdateSummonSettings(req);
+              case "/summon-agent":
+                return await handleSummonAgent(req);
               default:
                 return jsonError(404, "Not found.");
             }
@@ -185,6 +218,69 @@ async function handleCloseCouncil(req: Request): Promise<Response> {
   return Response.json(mapCloseCouncilResponse(result));
 }
 
+async function handleGetSummonSettings(): Promise<Response> {
+  const settings = await loadSummonSettings();
+  const supportedModels = await loadSupportedSummonModels();
+  const supportedModelDtos = supportedModels.map((model) => ({
+    value: model.value,
+    display_name: model.displayName,
+    description: model.description,
+  }));
+  return Response.json(mapSummonSettings(settings, supportedModelDtos));
+}
+
+async function handleUpdateSummonSettings(req: Request): Promise<Response> {
+  const body = await readJsonBody(req);
+  const agent = requireString(body, "agent");
+  if (!isSupportedSummonAgent(agent)) {
+    throw new ApiError(400, "Unsupported agent.");
+  }
+
+  const model = optionalStringOrNull(body, "model");
+  const update: {
+    lastUsedAgent: string;
+    agents?: Record<string, { model?: string | null }>;
+  } = {
+    lastUsedAgent: agent,
+  };
+
+  const agentUpdate: { model?: string | null } = {};
+  if (model !== undefined) {
+    agentUpdate.model = model;
+  }
+  if (Object.keys(agentUpdate).length > 0) {
+    update.agents = { [agent]: agentUpdate };
+  }
+
+  const updated = await upsertSummonSettings(update);
+  const supportedModels = await loadSupportedSummonModels();
+  const supportedModelDtos = supportedModels.map((model) => ({
+    value: model.value,
+    display_name: model.displayName,
+    description: model.description,
+  }));
+  return Response.json(mapSummonSettings(updated, supportedModelDtos));
+}
+
+async function handleSummonAgent(req: Request): Promise<Response> {
+  const body = await readJsonBody(req);
+  const settings = await loadSummonSettings();
+  const requestedAgent = optionalStringOrNull(body, "agent");
+  const defaultAgent = resolveDefaultSummonAgent(settings.lastUsedAgent, SUPPORTED_SUMMON_AGENTS);
+  const agent = typeof requestedAgent === "string" ? requestedAgent : defaultAgent;
+  if (!isSupportedSummonAgent(agent)) {
+    throw new ApiError(400, "Unsupported agent.");
+  }
+
+  const model = optionalStringOrNull(body, "model");
+  const result = await summonClaudeAgent({
+    agent,
+    model,
+  });
+
+  return Response.json(mapSummonAgentResponse(result));
+}
+
 async function readJsonBody(req: Request): Promise<JsonRecord> {
   let body: unknown;
   try {
@@ -218,6 +314,41 @@ function optionalString(body: JsonRecord, field: string): string | undefined {
   }
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function optionalStringOrNull(body: JsonRecord, field: string): string | null | undefined {
+  if (!(field in body)) {
+    return undefined;
+  }
+
+  const value = body[field];
+  if (value === null) {
+    return null;
+  }
+  if (typeof value !== "string") {
+    throw new ApiError(400, `"${field}" must be a string or null.`);
+  }
+
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function mapSummonSettings(settings: SummonSettings, supportedModels: SummonModelInfoDto[]): SummonSettingsResponse {
+  const agents: Record<string, SummonAgentSettingsDto> = {};
+
+  for (const [agent, agentSettings] of Object.entries(settings.agents)) {
+    agents[agent] = {
+      model: agentSettings.model,
+    };
+  }
+
+  return {
+    last_used_agent: settings.lastUsedAgent,
+    agents,
+    supported_agents: [...SUPPORTED_SUMMON_AGENTS],
+    supported_models: supportedModels,
+    default_agent: resolveDefaultSummonAgent(settings.lastUsedAgent, SUPPORTED_SUMMON_AGENTS),
+  };
 }
 
 function jsonError(status: number, message: string): Response {

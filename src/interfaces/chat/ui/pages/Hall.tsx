@@ -1,12 +1,29 @@
-import { useState } from "react";
+import { type ChangeEvent, useCallback, useEffect, useState } from "react";
+import MarkdownPreview, { type MarkdownPreviewProps } from "@uiw/react-markdown-preview";
 
 import { Settings } from "../components/Settings";
+import { getSummonSettings, summonAgent, updateSummonSettings } from "../api";
 import type { CouncilContext } from "../hooks/useCouncil";
+import type { SummonSettingsResponse } from "../types";
 
 type HallProps = {
   name: string;
   council: CouncilContext;
   onNameChange: (name: string) => void;
+};
+
+const filterMarkdownPlugins: NonNullable<MarkdownPreviewProps["pluginsFilter"]> = (type, plugins) => {
+  if (type !== "rehype") {
+    return plugins;
+  }
+
+  return plugins.filter((plugin) => {
+    const candidate = Array.isArray(plugin) ? plugin[0] : plugin;
+    if (typeof candidate !== "function") {
+      return true;
+    }
+    return candidate.name !== "rehypeRaw";
+  });
 };
 
 export function Hall({ name, council, onNameChange }: HallProps) {
@@ -15,6 +32,13 @@ export function Hall({ name, council, onNameChange }: HallProps) {
   const [conclusionDraft, setConclusionDraft] = useState("");
   const [showSettings, setShowSettings] = useState(false);
   const [showSummon, setShowSummon] = useState(false);
+  const [showSummonAgent, setShowSummonAgent] = useState(false);
+  const [summonSettings, setSummonSettings] = useState<SummonSettingsResponse | null>(null);
+  const [summonAgentName, setSummonAgentName] = useState("");
+  const [summonModel, setSummonModel] = useState("");
+  const [summonBusy, setSummonBusy] = useState(false);
+  const [summonError, setSummonError] = useState<string | null>(null);
+  const [summonNotice, setSummonNotice] = useState<string | null>(null);
 
   const {
     connection,
@@ -66,6 +90,90 @@ export function Hall({ name, council, onNameChange }: HallProps) {
     }
   };
 
+  const applySummonDefaults = useCallback((settings: SummonSettingsResponse, nextAgent?: string) => {
+    const agent = nextAgent ?? settings.default_agent ?? settings.supported_agents[0] ?? "";
+    setSummonAgentName(agent);
+    const agentSettings = settings.agents[agent];
+    setSummonModel(agentSettings?.model ?? "");
+  }, []);
+
+  useEffect(() => {
+    if (!showSummonAgent) {
+      return;
+    }
+    let cancelled = false;
+    setSummonBusy(true);
+    setSummonError(null);
+    setSummonNotice(null);
+    getSummonSettings()
+      .then((settings) => {
+        if (cancelled) {
+          return;
+        }
+        setSummonSettings(settings);
+        applySummonDefaults(settings);
+      })
+      .catch((err) => {
+        if (cancelled) {
+          return;
+        }
+        setSummonError(err instanceof Error ? err.message : "Unable to load summon settings.");
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setSummonBusy(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [showSummonAgent, applySummonDefaults]);
+
+  const handleSummonAgentChange = (event: ChangeEvent<HTMLSelectElement>) => {
+    const nextAgent = event.target.value;
+    setSummonNotice(null);
+    setSummonError(null);
+    if (summonSettings) {
+      applySummonDefaults(summonSettings, nextAgent);
+    } else {
+      setSummonAgentName(nextAgent);
+    }
+  };
+
+  const handleSummonAgent = async () => {
+    if (!summonAgentName) {
+        setSummonError("Select an agent to summon.");
+      return;
+    }
+    setSummonBusy(true);
+    setSummonError(null);
+    setSummonNotice(null);
+
+    const model = summonModel.trim();
+    const payload = {
+      agent: summonAgentName,
+      model: model.length > 0 ? model : null,
+    };
+
+    try {
+      const updatedSettings = await updateSummonSettings(payload);
+      setSummonSettings(updatedSettings);
+      const result = await summonAgent(payload);
+      setSummonNotice(`Summoned ${result.agent}. Response recorded.`);
+    } catch (err) {
+      setSummonError(err instanceof Error ? err.message : "Unable to summon agent.");
+    } finally {
+      setSummonBusy(false);
+    }
+  };
+
+  const closeSummonAgentModal = () => {
+    setShowSummonAgent(false);
+    setSummonError(null);
+    setSummonNotice(null);
+  };
+
   return (
     <div className="app">
       <header className="hero">
@@ -112,9 +220,22 @@ export function Hall({ name, council, onNameChange }: HallProps) {
                 <div className="request-card">
                   <div className="request-card-label">Council Request</div>
                   <p className="request-text">{currentRequest.content}</p>
-                  <div className="meta-row">
-                    Summoned by {currentRequest.created_by} at {formatTime(currentRequest.created_at)}
+                  <div className="request-meta">
+                    <span className="meta-pill">Requested by {currentRequest.created_by}</span>
+                    <span className="meta-pill">{formatTime(currentRequest.created_at)}</span>
                   </div>
+                  {isActive ? (
+                    <div className="request-actions">
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-summon"
+                        onClick={() => setShowSummonAgent(true)}
+                        disabled={busy || summonBusy}
+                      >
+                        Summon Claude
+                      </button>
+                    </div>
+                  ) : null}
                 </div>
               ) : (
                 <p className="muted">No council is in session. Bring a matter before the wise.</p>
@@ -168,7 +289,13 @@ export function Hall({ name, council, onNameChange }: HallProps) {
         <section className="panel voices-panel">
           <div className="panel-header">
             <h2>Voices of the Council</h2>
-            {!isIdle ? <span className="meta">{feedback.length} {feedback.length === 1 ? "voice" : "voices"}</span> : null}
+            <div className="voices-header-actions">
+              {!isIdle ? (
+                <span className="voices-count">
+                  {feedback.length} {feedback.length === 1 ? "voice" : "voices"}
+                </span>
+              ) : null}
+            </div>
           </div>
           {isIdle ? (
             <div className="empty">No council is in session.</div>
@@ -178,13 +305,22 @@ export function Hall({ name, council, onNameChange }: HallProps) {
                 {feedback.length === 0 ? (
                   <div className="empty">The council listens...</div>
                 ) : (
-                  feedback.map((entry) => (
+                  feedback.map((entry, index) => (
                     <article key={entry.id} className="message">
-                      <header>
-                        <span className="author">{entry.author}</span>
-                        <span className="meta">{formatTime(entry.created_at)}</span>
+                      <header className="message-header">
+                        <div className="message-meta">
+                          <span className="author">{entry.author}</span>
+                          <span className="meta">{formatTime(entry.created_at)}</span>
+                        </div>
                       </header>
-                      <p>{entry.content}</p>
+                      <MarkdownPreview
+                        className="message-content"
+                        source={entry.content}
+                        skipHtml
+                        pluginsFilter={filterMarkdownPlugins}
+                        wrapperElement={{ "data-color-mode": "dark" }}
+                      />
+                      {index < feedback.length - 1 ? <hr className="message-divider" /> : null}
                     </article>
                   ))
                 )}
@@ -276,6 +412,102 @@ export function Hall({ name, council, onNameChange }: HallProps) {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      ) : null}
+
+      {showSummonAgent ? (
+        <div
+          className="dialog-backdrop"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) {
+              closeSummonAgentModal();
+            }
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") {
+              closeSummonAgentModal();
+            }
+          }}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Summon an agent"
+        >
+          <div className="dialog-panel">
+            <div className="dialog-header">
+              <h2>Summon an Agent</h2>
+              <button type="button" className="dialog-close" onClick={closeSummonAgentModal} aria-label="Close">
+                ×
+              </button>
+            </div>
+            {summonError ? (
+              <div className="alert" role="alert">
+                {summonError}
+              </div>
+            ) : null}
+            {summonNotice ? <output className="notice">{summonNotice}</output> : null}
+            {!summonSettings ? (
+              <div className="empty">Loading summon settings...</div>
+            ) : (
+              <form
+                className="dialog-form"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void handleSummonAgent();
+                }}
+              >
+                <label className="label" htmlFor="summon-agent">
+                  Agent
+                </label>
+                <select
+                  id="summon-agent"
+                  className="select"
+                  value={summonAgentName}
+                  onChange={handleSummonAgentChange}
+                  disabled={summonBusy}
+                >
+                  {summonSettings.supported_agents.map((agent) => (
+                    <option key={agent} value={agent}>
+                      {agent}
+                    </option>
+                  ))}
+                </select>
+                <label className="label" htmlFor="summon-model">
+                  Model
+                </label>
+                {summonSettings.supported_models.length > 0 &&
+                summonModel &&
+                !summonSettings.supported_models.some((model) => model.value === summonModel) ? (
+                  <div className="select-hint">Saved model isn’t in the current list.</div>
+                ) : null}
+                <select
+                  id="summon-model"
+                  className="select"
+                  value={summonModel}
+                  onChange={(event) => setSummonModel(event.target.value)}
+                  disabled={summonBusy}
+                >
+                  <option value="">Default (Claude Code)</option>
+                  {summonModel &&
+                  !summonSettings.supported_models.some((model) => model.value === summonModel) ? (
+                    <option value={summonModel}>{`Saved: ${summonModel}`}</option>
+                  ) : null}
+                  {summonSettings.supported_models.map((model) => (
+                    <option key={model.value} value={model.value}>
+                      {model.display_name}
+                    </option>
+                  ))}
+                </select>
+                <div className="dialog-actions">
+                  <button type="button" className="btn btn-ghost" onClick={closeSummonAgentModal} disabled={summonBusy}>
+                    Cancel
+                  </button>
+                  <button type="submit" className="btn btn-primary" disabled={summonBusy || !summonAgentName}>
+                    Summon Agent
+                  </button>
+                </div>
+              </form>
+            )}
           </div>
         </div>
       ) : null}

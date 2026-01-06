@@ -3,6 +3,8 @@ import type {
   GetCurrentSessionDataResponse,
   SendResponseResponse,
   StartCouncilResponse,
+  SummonAgentResponse,
+  SummonSettingsResponse,
 } from "./types";
 
 async function postJson<T>(path: string, payload: Record<string, unknown>): Promise<T> {
@@ -61,6 +63,24 @@ export async function closeCouncil(agentName: string, conclusion: string): Promi
     agent_name: agentName,
     conclusion,
   });
+}
+
+export async function getSummonSettings(): Promise<SummonSettingsResponse> {
+  return postJson<SummonSettingsResponse>("/get-summon-settings", {});
+}
+
+export async function updateSummonSettings(payload: {
+  agent: string;
+  model?: string | null;
+}): Promise<SummonSettingsResponse> {
+  return postJson<SummonSettingsResponse>("/update-summon-settings", payload);
+}
+
+export async function summonAgent(payload: {
+  agent?: string | null;
+  model?: string | null;
+}): Promise<SummonAgentResponse> {
+  return postJson<SummonAgentResponse>("/summon-agent", payload);
 }
 
 export function resolveWebSocketUrl(): string {

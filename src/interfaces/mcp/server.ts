@@ -3,7 +3,14 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 
+import { loadSummonSettings } from "../../core/config/summonSettings";
 import { CouncilServiceImpl } from "../../core/services/council";
+import {
+  SUPPORTED_SUMMON_AGENTS,
+  loadSupportedSummonModels,
+  resolveDefaultSummonAgent,
+  summonClaudeAgent,
+} from "../../core/services/council/summon";
 import { FileCouncilStateStore } from "../../core/state/fileStateStore";
 import {
   mapCloseCouncilInput,
@@ -12,6 +19,8 @@ import {
   mapGetCurrentSessionDataResponse,
   mapSendResponseInput,
   mapSendResponseResponse,
+  mapSummonAgentInput,
+  mapSummonAgentResponse,
   mapStartCouncilInput,
   mapStartCouncilResponse,
 } from "./mapper";
@@ -22,12 +31,20 @@ import type {
   JoinCouncilParams,
   SendResponseParams,
   SendResponseResponse,
+  SummonAgentParams,
+  SummonAgentResponse,
   StartCouncilParams,
   StartCouncilResponse,
 } from "./dtos/types";
 
 type ResponseFormat = "markdown" | "json";
-type ToolName = "start_council" | "join_council" | "get_current_session_data" | "close_council" | "send_response";
+type ToolName =
+  | "start_council"
+  | "join_council"
+  | "get_current_session_data"
+  | "close_council"
+  | "send_response"
+  | "summon_agent";
 type ToolContext = {
   cursor?: string;
 };
@@ -74,13 +91,14 @@ export async function startMcpServer(options: { format?: ResponseFormat; agentNa
   responseFormat = format;
   const configuredAgentName = options.agentName?.trim() || null;
   agentName = configuredAgentName;
-  registerTools({ hasDefaultAgentName: configuredAgentName !== null });
+  const supportedModels = await loadSupportedSummonModels();
+  registerTools({ hasDefaultAgentName: configuredAgentName !== null, supportedModels });
   const transport = new StdioServerTransport();
   await server.connect(transport);
   console.error("Council MCP server running on stdio");
 }
 
-function registerTools(options: { hasDefaultAgentName: boolean }): void {
+function registerTools(options: { hasDefaultAgentName: boolean; supportedModels: { value: string }[] }): void {
   if (toolsRegistered) {
     return;
   }
@@ -118,6 +136,15 @@ function registerTools(options: { hasDefaultAgentName: boolean }): void {
   const closeCouncilSchema: z.ZodTypeAny = z
     .object({
       conclusion: z.string().min(1),
+    })
+    .strict();
+
+  const modelOptions = options.supportedModels.map((model) => model.value).filter((value) => value.length > 0);
+  const modelSchema = modelOptions.length > 0 ? z.enum(modelOptions as [string, ...string[]]) : z.string().min(1);
+  const summonAgentSchema: z.ZodTypeAny = z
+    .object({
+      agent: z.enum(SUPPORTED_SUMMON_AGENTS),
+      model: modelSchema.optional(),
     })
     .strict();
 
@@ -179,6 +206,9 @@ function registerTools(options: { hasDefaultAgentName: boolean }): void {
   const joinCouncilDescription = options.hasDefaultAgentName
     ? "Join the current council session and fetch the request and responses."
     : "Join the current council session and fetch the request and responses. Provide agent_name to identify yourself; the server may append #1, #2, etc. if the name is already taken.";
+
+  const summonAgentDescription =
+    "Summon an agent into the active council. agent is required; model is an optional override. Defaults use the last used agent or alphabetical fallback.";
 
   registerTool<JoinCouncilParams>(
     "join_council",
@@ -251,6 +281,31 @@ function registerTools(options: { hasDefaultAgentName: boolean }): void {
       }
     },
   );
+
+  registerTool<SummonAgentParams>(
+    "summon_agent",
+    {
+      description: summonAgentDescription,
+      inputSchema: summonAgentSchema,
+    },
+    async (params) => {
+      try {
+        const settings = await loadSummonSettings();
+        const defaultAgent = resolveDefaultSummonAgent(settings.lastUsedAgent, SUPPORTED_SUMMON_AGENTS);
+        const resolvedAgent = params.agent || defaultAgent;
+        const result = await summonClaudeAgent(
+          mapSummonAgentInput({
+            agent: resolvedAgent,
+            model: params.model,
+          }),
+        );
+        const response = mapSummonAgentResponse(result);
+        return toolOk("summon_agent", response);
+      } catch (error) {
+        return toolError(error);
+      }
+    },
+  );
 }
 
 function toolOk<T extends Record<string, unknown>>(
@@ -302,6 +357,8 @@ function formatToolText(toolName: ToolName, payload: unknown, context: ToolConte
       return formatCloseCouncil();
     case "send_response":
       return formatSendResponse(payload as SendResponseResponse);
+    case "summon_agent":
+      return formatSummonAgent(payload as SummonAgentResponse);
     default: {
       const _exhaustive: never = toolName;
       return _exhaustive;
@@ -376,4 +433,13 @@ function formatCloseCouncil(): string {
 
 function formatSendResponse(response: SendResponseResponse): string {
   return ["Your reply is set down.", `Your assigned name is: ${response.agent_name}`].join("\n");
+}
+
+function formatSummonAgent(response: SummonAgentResponse): string {
+  const lines = ["The summoned agent has responded.", `Agent: ${response.agent}`];
+  if (response.model) {
+    lines.push(`Model: ${response.model}`);
+  }
+  lines.push(`Response: ${response.feedback.content}`);
+  return lines.join("\n");
 }

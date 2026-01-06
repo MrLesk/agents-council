@@ -72,3 +72,27 @@ export type SendResponseResponse = {
   feedback: FeedbackDto;
   state: CouncilStateDto;
 };
+
+export type SummonAgentSettingsDto = {
+  model: string | null;
+};
+
+export type SummonModelInfoDto = {
+  value: string;
+  display_name: string;
+  description: string;
+};
+
+export type SummonSettingsResponse = {
+  last_used_agent: string | null;
+  agents: Record<string, SummonAgentSettingsDto>;
+  supported_agents: string[];
+  supported_models: SummonModelInfoDto[];
+  default_agent: string;
+};
+
+export type SummonAgentResponse = {
+  agent: string;
+  model: string | null;
+  feedback: FeedbackDto;
+};

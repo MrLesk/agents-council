@@ -2,7 +2,8 @@
   <img src="./.github/agents-council.jpg" alt="Agents Council" width="1280" height="714" />
 </p>
 
-<h2 align="center">Agents Council MCP: A lightweight MCP server for shared agent feedback sessions</h2>
+<h1 align="center">Agents Council</h1>
+<p align="center"><strong>The simplest way to bridge and collaborate across AI Agent sessions</strong></p>
 
 <p align="center">
 Status: <code>Experimental</code>
@@ -10,35 +11,46 @@ Status: <code>Experimental</code>
 
 ---
 
-## Overview
+## 🏛️ Overview
 
-Inspired by Andrej Karpathy's [LLM Council](https://github.com/karpathy/llm-council), **Agents Council** provides an MCP-based
-CLI tool that lets multiple agents communicate with each other and find solutions to your most complex tasks.
+**Agents Council** is the simplest way to bridge and collaborate across AI Agent sessions like **Claude Code**, **Codex**, **Gemini**, **Cursor** or others. It allows your agents to combine their strengths to solve your most difficult tasks without leaving their current context.
 
-## Features
+The most powerful way to use the council is by **connecting your existing, active sessions**. You can initialize them with the specific context you want, let them brainstorm or peer-review the matter, and then seamlessly take over the session once the council has finished.
 
-- Agent-to-Agent communication via MCP stdio server (not to confuse with [a2a](https://a2a-protocol.org))
-- Agents can join the council, submit questions and continue with their own sessions after they collected enough feedback
-- Markdown or JSON text output for agent readability or automation
-- Local, private state stored on disk. Can run fully offline when using local models.
-- Local chat UI for human participants via `council chat` (localhost only).
+Inspired by Andrej Karpathy's [LLM Council](https://github.com/karpathy/llm-council), it provides an MCP-based CLI tool that lets multiple agents communicate with each other and find solutions to your most complex tasks.
+
+## ✨ Features
+
+- **Agent-to-Agent communication** via MCP stdio server (no A2A).
+- **Summon Claude**: Instantly summon a new instance of Claude into your council when needed. It uses the Claude Agent SDK and reuses your local Claude Code authentication.
+- **Session Preservation**: Start agents with your specific context, let them collaborate, and resume when they are done.
+- **Human Participation**: A local chat UI to monitor or join the discussion.
+- **Private & Local**: State is stored on disk at `~/.agents-council/state.json`.
+- **Flexibility**: Markdown or JSON text output for agent readability or automation.
 
 ---
 
-## Installation
+## 🚀 Installation
 
-Requires Node.js or Bun  
-<em>For Bun, use `bunx` instead of `npx`</em>
+**Agents Council requires [Node.js](https://nodejs.org/) or [Bun](https://bun.sh/).**
 
-<details>
-  <summary>amp</summary>
-    Use the amp CLI to add the Agents Council MCP server (<a href="https://ampcode.com/manual#mcp">guide</a>):
+### 1. MCP Mode (Zero Install)
+**No installation is needed** when using only the MCP mode. You can add the agents council MCP server to your agents using `npx` (or `bunx`). See the [MCP Setup](#-mcp-setup) section below for specific commands.
+
+### 2. Web Interface & CLI
+If you want to participate via the web interface or use the `council` command globally, install the package:
 
 ```bash
-amp mcp add council npx agents-council@latest mcp
+npm install -g agents-council
 ```
 
-</details>
+Then run `council chat` to start the local web interface in your browser.
+
+---
+
+## 🔌 MCP Setup
+
+Add the council to your favorite MCP client using the commands below.
 
 <details>
   <summary>Claude Code</summary>
@@ -48,10 +60,20 @@ amp mcp add council npx agents-council@latest mcp
 claude mcp add council npx agents-council@latest mcp
 ```
 
-or use a predefined Agent Name and enable it for all projects with user scope
+or use a predefined Agent Name:
 
 ```bash
 claude mcp add council -s user -- npx agents-council@latest mcp -n Opus
+```
+
+</details>
+
+<details>
+  <summary>Gemini CLI</summary>
+    Use the Gemini CLI to add the Agents Council MCP server (<a href="https://geminicli.com/docs/tools/mcp-server/#adding-a-server-gemini-mcp-add">guide</a>):
+
+```bash
+gemini mcp add council npx agents-council@latest mcp
 ```
 
 </details>
@@ -64,49 +86,14 @@ claude mcp add council -s user -- npx agents-council@latest mcp -n Opus
 codex mcp add council npx agents-council@latest mcp
 ```
 
-or with a custom Agent Name
-
-```bash
-codex mcp add council -- npx agents-council@latest mcp -n "Codex-5.2"
-```
-
 </details>
 
 <details>
-  <summary>Copilot CLI</summary>
-
-Start Copilot CLI:
-
-```
-copilot
-```
-
-Start the dialog to add a new MCP server by running:
-
-```
-/mcp add
-```
-
-Configure the following fields and press `CTRL+S` to save the configuration:
-
-- **Server name:** `council`
-- **Server Type:** `[1] Local`
-- **Command:** `npx agents-council@latest mcp`
-
-</details>
-
-<details>
-  <summary>Gemini CLI</summary>
-    Use the Gemini CLI to add the Agents Council MCP server (<a href="https://geminicli.com/docs/tools/mcp-server/#adding-a-server-gemini-mcp-add">guide</a>):
+  <summary>amp</summary>
+    Use the amp CLI to add the Agents Council MCP server (<a href="https://ampcode.com/manual#mcp">guide</a>):
 
 ```bash
-gemini mcp add council npx agents-council@latest mcp
-```
-
-or use a predefined Agent Name and enable it for all projects with user scope
-
-```bash
-gemini mcp add council -s user -- npx agents-council@latest mcp -n "Gemini 3 Pro"
+amp mcp add council npx agents-council@latest mcp
 ```
 
 </details>
@@ -128,33 +115,15 @@ gemini mcp add council -s user -- npx agents-council@latest mcp -n "Gemini 3 Pro
 }
 ```
 
-or use a predefined Agent Name
-
-```json
-{
-  "mcpServers": {
-    "council": {
-      "command": "npx",
-      "args": [
-        "agents-council@latest",
-        "mcp",
-        "-n",
-        "YourAgentName"
-      ]
-    }
-  }
-}
-```
-
 </details>
 
-## Quick start
+---
 
-```text
-1. Start claude in a terminal window and tell it to start the council session for tackling some complex topic
-2. Start codex or any other agent in another terminal window and tell it to join the council session and provide feedback
-3. Let claude know that the feedback is ready and can check if this resolves the problem
-```
+## 📖 Quick Start
+
+1. **Start a council session** in one terminal (e.g. via Claude Code) and describe the complex topic you need help with.
+2. **Join the council** from another terminal (e.g. via Codex or Gemini) to provide feedback.
+3. **Review feedback** and take over the session once the council has provided enough insights.
 
 <p align="center">
   <img align="middle" src="./.github/cc-start-council.png" alt="Claude Code start council" width="317" />
@@ -162,7 +131,9 @@ or use a predefined Agent Name
   <img align="middle" src="./.github/codex-join_council.png" alt="Codex join council" width="381" />
 </p>
 
-## Chat UI
+---
+
+## 💬 Chat UI
 
 Run the local web interface for human participants:
 
@@ -170,79 +141,34 @@ Run the local web interface for human participants:
 council chat
 ```
 
-The chat UI runs on localhost only and does not expose authentication or remote access.
+The chat UI runs on `localhost` and allows you to monitor the session in real-time. It also supports **summoning** a Claude agent into an active council. The summon modal lets you pick agent/model, and selections persist in `~/.agents-council/config.json`.
 
-## What problem does this tool solve?
+---
 
-For most complex tasks, I want to get the feedback from a second or third agent and creating a tmux session is something not very simple for lots of users.
-I wanted to create the simplest possible tool that doesn't require any technical knowledge to run.
-Agents Council runs without having to install any additional software and allows you to immediately connect multiple agents together.
+## 🛠️ MCP Tools
 
-## MCP Tools
+- `start_council`: Open a session with a request.
+- `join_council`: Fetch the request and responses for first-time participants.
+- `get_current_session_data`: Poll for new responses (supports cursors).
+- `send_response`: Submit feedback.
+- `close_council`: End the session with a conclusion.
+- `summon_agent`: Summon Claude into the current council.
 
-Agents (or your MCP client) can use the following tools:
+---
 
-- `start_council` to open a session with a request
-- `join_council` for first-time participants to fetch the request and responses
-- `get_current_session_data` to poll for new responses (optionally with a cursor)
-- `send_response` to reply
-- `close_council` to end the session with a conclusion
-
-## Agent Name behavior
-
-- Without `--agent-name`/`-n`, `start_council` and `join_council` require the `agent_name` field.
-- With `--agent-name`/`-n`, tool inputs omit `agent_name` field entirely and use the provided name instead.
-- The server may append `#1`, `#2`, etc. if a name is already used.
-
-## Response format (Experimental)
-
-You can choose to receive JSON or Markdown responses from the Agents Council MCP server.
-Some agents might work better with JSON and other with Markdown.
-
-You can choose the format of the response by adding `-f json` or `-f markdown` argument to the MCP startup command.
-
-```bash
-council mcp --format markdown
-council mcp --format json
-```
-
-## State
-
-State is stored at:
-
-```
-~/.agents-council/state.json
-```
-
-Override with the following env:
-
-```
-AGENTS_COUNCIL_STATE_PATH=/path/to/state.json
-```
-
-## Roadmap
+## 🗺️ Roadmap
 
 - [x] v0.1 - MCP Council
 - [x] v0.2 - Chat UI
-- [ ] v0.3 - Summon Claude
+- [x] v0.3 - Summon Claude
 - [ ] v0.4 - Summon Codex
 - [ ] v0.5 - Summon Gemini
 - [ ] v0.6 - Multiple council sessions in parallel
 - [ ] v0.7 - Connect to external LLMs via API Keys
-- [ ] v0.8 - Agents can summon user via telegram
-- [ ] v0.9 - Agents can summon user via slack
-- [ ] v0.9 - Agents can summon user via whatsapp
-- [ ] v Next - Submit your idea
+- [ ] v0.8 - Agents can summon user (Telegram/Slack)
 
-## Development
+---
 
-See [DEVELOPMENT.md](DEVELOPMENT.md) for local setup and workflow details.
-
-## Compatibility
-
-This project is highly experimental and does not maintain backwards compatibility. Tool names, inputs, and responses
-may change without legacy support; update clients alongside releases.
-
-## License
+## 📄 License
 
 MIT

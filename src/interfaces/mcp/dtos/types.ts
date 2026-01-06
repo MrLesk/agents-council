@@ -93,3 +93,14 @@ export type SendResponseResponse = {
   feedback: FeedbackDto;
   state: CouncilStateDto;
 };
+
+export type SummonAgentParams = {
+  agent: string;
+  model?: string;
+};
+
+export type SummonAgentResponse = {
+  agent: string;
+  model: string | null;
+  feedback: FeedbackDto;
+};
