@@ -70,7 +70,7 @@ Disable auto-open:
 The MCP tools are meant for AI agent clients (Claude/Codex/Gemini/etc). The chat UI is the human-facing
 interface for participating in the same local council session.
 
-From the chat UI you can also summon a Claude agent into an active council. The summon modal lets you
+From the chat UI you can also summon a Claude or Codex agent into an active council. The summon modal lets you
 select agent/model, and those selections persist between runs.
 
 ## Tools (v1)
@@ -82,7 +82,7 @@ The MCP server exposes six tools:
 - `get_current_session_data` (returns the session request and responses, optionally from a cursor)
 - `close_council` (closes the current session with a conclusion)
 - `send_response` (adds a response to the current request)
-- `summon_agent` (summons a Claude agent into the active council)
+- `summon_agent` (summons a Claude or Codex agent into the active council)
 
 `summon_agent` inputs:
 - `agent` (required, enum)
@@ -90,6 +90,8 @@ The MCP server exposes six tools:
 
 If `agent` is omitted by the caller, the last used agent is selected when available; otherwise the
 alphabetical default is used. When `model` is omitted, the saved settings are used.
+
+Codex model defaults come from `~/.codex/config.toml` (`model = "..."`) unless you override the model in the summon call.
 
 `start_council` and `join_council` require an `agent_name` unless the server was started with
 `--agent-name/-n`. The server may append a suffix (`#1`, `#2`, ...) if the name is already in use;
@@ -258,6 +260,11 @@ AGENTS_COUNCIL_STATE_PATH=/path/to/state.json
 ```
 
 The config path uses the same directory as the resolved state path.
+
+Summon prerequisites:
+
+- Claude: install Claude Code and run `claude` once to authenticate.
+- Codex: run `codex login` once (or set `CODEX_API_KEY`); optionally set a default model in `~/.codex/config.toml`.
 
 Enable summon debug logging (writes `summon-debug.log` in the current working directory):
 

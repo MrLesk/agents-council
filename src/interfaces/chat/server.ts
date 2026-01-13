@@ -6,10 +6,10 @@ import { CouncilServiceImpl } from "../../core/services/council";
 import {
   SUPPORTED_SUMMON_AGENTS,
   getClaudeCodeVersion,
-  loadSupportedSummonModels,
+  loadSupportedSummonModelsByAgent,
   isSupportedSummonAgent,
   resolveDefaultSummonAgent,
-  summonClaudeAgent,
+  summonAgent,
 } from "../../core/services/council/summon";
 import { FileCouncilStateStore } from "../../core/state/fileStateStore";
 import type { CouncilStateWatcher } from "../../core/state/watcher";
@@ -54,7 +54,7 @@ type SummonSettingsResponse = {
   last_used_agent: string | null;
   agents: Record<string, SummonAgentSettingsDto>;
   supported_agents: string[];
-  supported_models: SummonModelInfoDto[];
+  supported_models_by_agent: Record<string, SummonModelInfoDto[]>;
   default_agent: string;
   claude_code_path: string | null;
   claude_code_version: string | null;
@@ -230,17 +230,13 @@ async function handleCloseCouncil(req: Request): Promise<Response> {
 }
 
 async function handleGetSummonSettings(): Promise<Response> {
-  const [settings, supportedModels, version] = await Promise.all([
+  const [settings, supportedModelsByAgent, version] = await Promise.all([
     loadSummonSettings(),
-    loadSupportedSummonModels(),
+    loadSupportedSummonModelsByAgent(),
     getClaudeCodeVersion(),
   ]);
-  const supportedModelDtos = supportedModels.map((model) => ({
-    value: model.value,
-    display_name: model.displayName,
-    description: model.description,
-  }));
-  return Response.json(mapSummonSettings(settings, supportedModelDtos, version));
+  const supportedModelDtosByAgent = mapSupportedModelsByAgent(supportedModelsByAgent);
+  return Response.json(mapSummonSettings(settings, supportedModelDtosByAgent, version));
 }
 
 async function handleUpdateSummonSettings(req: Request): Promise<Response> {
@@ -267,13 +263,12 @@ async function handleUpdateSummonSettings(req: Request): Promise<Response> {
   }
 
   const updated = await upsertSummonSettings(update);
-  const [supportedModels, version] = await Promise.all([loadSupportedSummonModels(), getClaudeCodeVersion()]);
-  const supportedModelDtos = supportedModels.map((model) => ({
-    value: model.value,
-    display_name: model.displayName,
-    description: model.description,
-  }));
-  return Response.json(mapSummonSettings(updated, supportedModelDtos, version));
+  const [supportedModelsByAgent, version] = await Promise.all([
+    loadSupportedSummonModelsByAgent(),
+    getClaudeCodeVersion(),
+  ]);
+  const supportedModelDtosByAgent = mapSupportedModelsByAgent(supportedModelsByAgent);
+  return Response.json(mapSummonSettings(updated, supportedModelDtosByAgent, version));
 }
 
 async function handleSummonAgent(req: Request): Promise<Response> {
@@ -287,7 +282,7 @@ async function handleSummonAgent(req: Request): Promise<Response> {
   }
 
   const model = optionalStringOrNull(body, "model");
-  const result = await summonClaudeAgent({
+  const result = await summonAgent({
     agent,
     model,
   });
@@ -371,9 +366,25 @@ function optionalStringOrNull(body: JsonRecord, field: string): string | null | 
   return trimmed.length > 0 ? trimmed : null;
 }
 
+function mapSupportedModelsByAgent(
+  supportedModelsByAgent: Record<string, { value: string; displayName: string; description: string }[]>,
+): Record<string, SummonModelInfoDto[]> {
+  const mapped: Record<string, SummonModelInfoDto[]> = {};
+
+  for (const [agent, models] of Object.entries(supportedModelsByAgent)) {
+    mapped[agent] = models.map((model) => ({
+      value: model.value,
+      display_name: model.displayName,
+      description: model.description,
+    }));
+  }
+
+  return mapped;
+}
+
 function mapSummonSettings(
   settings: SummonSettings,
-  supportedModels: SummonModelInfoDto[],
+  supportedModelsByAgent: Record<string, SummonModelInfoDto[]>,
   version: string | null,
 ): SummonSettingsResponse {
   const agents: Record<string, SummonAgentSettingsDto> = {};
@@ -388,7 +399,7 @@ function mapSummonSettings(
     last_used_agent: settings.lastUsedAgent,
     agents,
     supported_agents: [...SUPPORTED_SUMMON_AGENTS],
-    supported_models: supportedModels,
+    supported_models_by_agent: supportedModelsByAgent,
     default_agent: resolveDefaultSummonAgent(settings.lastUsedAgent, SUPPORTED_SUMMON_AGENTS),
     claude_code_path: settings.claudeCodePath,
     claude_code_version: version,

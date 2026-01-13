@@ -1,15 +1,18 @@
 import { createSdkMcpServer, query, tool } from "@anthropic-ai/claude-agent-sdk";
+import { Codex } from "@openai/codex-sdk";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import { appendFile } from "node:fs/promises";
+import { appendFile, readFile } from "node:fs/promises";
+import { createRequire } from "node:module";
+import os from "node:os";
 import path from "node:path";
 import { z } from "zod";
 
 import { loadSummonSettings, upsertSummonSettings } from "../../config/summonSettings";
 import { FileCouncilStateStore } from "../../state/fileStateStore";
 import { CouncilServiceImpl } from "./index";
-import type { CouncilFeedback } from "./types";
+import type { CouncilFeedback, CouncilRequest, CouncilState } from "./types";
 
-export const SUPPORTED_SUMMON_AGENTS = ["Claude"] as const;
+export const SUPPORTED_SUMMON_AGENTS = ["Claude", "Codex"] as const;
 export type SupportedSummonAgent = (typeof SUPPORTED_SUMMON_AGENTS)[number];
 
 export function isSupportedSummonAgent(value: string): value is SupportedSummonAgent {
@@ -62,7 +65,11 @@ const SUMMON_TOOL_PREFIX = "mcp__council__";
 const READ_ONLY_TOOLS = new Set(["Read", "Glob", "Grep"]);
 const SUMMON_DEBUG_ENV = "AGENTS_COUNCIL_SUMMON_DEBUG";
 const CLAUDE_CODE_PATH_ENV = "CLAUDE_CODE_PATH";
+const CODEX_API_KEY_ENV = "CODEX_API_KEY";
+const OPENAI_API_KEY_ENV = "OPENAI_API_KEY";
+const OPENAI_BASE_URL_ENV = "OPENAI_BASE_URL";
 const MODEL_CACHE_TTL_MS = 5 * 60 * 1000;
+const CODEX_CONFIG_PATH = path.join(os.homedir(), ".codex", "config.toml");
 
 function isAbsolutePath(p: string): boolean {
   // Unix absolute path or Windows absolute path (C:\... or \\...)
@@ -138,8 +145,10 @@ export async function getClaudeCodeVersion(): Promise<string | null> {
   return null;
 }
 
-let cachedModels: SummonModelInfo[] | null = null;
-let cachedModelsAt = 0;
+let cachedClaudeModels: SummonModelInfo[] | null = null;
+let cachedClaudeModelsAt = 0;
+let cachedCodexModels: SummonModelInfo[] | null = null;
+let cachedCodexModelsAt = 0;
 
 function isSummonToolAllowed(toolName: string): boolean {
   if (toolName.startsWith(SUMMON_TOOL_PREFIX)) {
@@ -153,10 +162,26 @@ function isSummonDebugEnabled(): boolean {
   return value === "1" || value === "true" || value === "yes";
 }
 
-export async function loadSupportedSummonModels(): Promise<SummonModelInfo[]> {
+export async function loadSupportedSummonModels(agent: SupportedSummonAgent): Promise<SummonModelInfo[]> {
+  if (agent === "Codex") {
+    return loadCodexSupportedModels();
+  }
+  return loadClaudeSupportedModels();
+}
+
+export async function loadSupportedSummonModelsByAgent(
+  agents: readonly SupportedSummonAgent[] = SUPPORTED_SUMMON_AGENTS,
+): Promise<Record<string, SummonModelInfo[]>> {
+  const entries = await Promise.all(
+    agents.map(async (agent) => [agent, await loadSupportedSummonModels(agent)] as const),
+  );
+  return Object.fromEntries(entries);
+}
+
+async function loadClaudeSupportedModels(): Promise<SummonModelInfo[]> {
   const now = Date.now();
-  if (cachedModels && now - cachedModelsAt < MODEL_CACHE_TTL_MS) {
-    return cachedModels;
+  if (cachedClaudeModels !== null && now - cachedClaudeModelsAt < MODEL_CACHE_TTL_MS) {
+    return cachedClaudeModels;
   }
 
   const claudeCodePath = await getClaudeCodeExecutablePath();
@@ -184,18 +209,81 @@ export async function loadSupportedSummonModels(): Promise<SummonModelInfo[]> {
       }))
       .filter((model) => model.value.trim().length > 0);
 
-    if (normalized.length > 0) {
-      cachedModels = normalized;
-      cachedModelsAt = now;
-    }
-
+    cachedClaudeModels = normalized;
+    cachedClaudeModelsAt = now;
     return normalized;
   } catch {
+    cachedClaudeModels = [];
+    cachedClaudeModelsAt = now;
     return [];
   } finally {
     // Fire-and-forget interrupt - don't await as it may hang
     response.interrupt().catch(() => {});
   }
+}
+
+async function loadCodexSupportedModels(): Promise<SummonModelInfo[]> {
+  const now = Date.now();
+  if (cachedCodexModels !== null && now - cachedCodexModelsAt < MODEL_CACHE_TTL_MS) {
+    return cachedCodexModels;
+  }
+
+  const defaultModel = await loadCodexDefaultModel();
+  const models = defaultModel
+    ? [
+        {
+          value: defaultModel,
+          displayName: defaultModel,
+          description: "Default from ~/.codex/config.toml",
+        },
+      ]
+    : [];
+
+  cachedCodexModels = models;
+  cachedCodexModelsAt = now;
+  return models;
+}
+
+async function loadCodexDefaultModel(): Promise<string | null> {
+  try {
+    const config = await readFile(CODEX_CONFIG_PATH, "utf8");
+    return parseCodexModelFromConfig(config);
+  } catch {
+    return null;
+  }
+}
+
+function parseCodexModelFromConfig(config: string): string | null {
+  const doubleQuoted = config.match(/^\s*model\s*=\s*"(.*?)"\s*$/m);
+  if (doubleQuoted?.[1]) {
+    return doubleQuoted[1].trim();
+  }
+  const singleQuoted = config.match(/^\s*model\s*=\s*'(.*?)'\s*$/m);
+  if (singleQuoted?.[1]) {
+    return singleQuoted[1].trim();
+  }
+  return null;
+}
+
+function getCurrentRequestFromState(state: CouncilState): CouncilRequest | null {
+  const currentId = state.session?.currentRequestId;
+  if (!currentId) {
+    return null;
+  }
+  return state.requests.find((request) => request.id === currentId) ?? null;
+}
+
+export async function summonAgent(input: SummonAgentInput): Promise<SummonAgentResult> {
+  const agent = normalizeRequiredString(input.agent, "agent");
+  if (!isSupportedSummonAgent(agent)) {
+    throw new Error("Unsupported agent.");
+  }
+
+  if (agent === "Codex") {
+    return summonCodexAgent({ ...input, agent });
+  }
+
+  return summonClaudeAgent({ ...input, agent });
 }
 
 export async function summonClaudeAgent(input: SummonAgentInput): Promise<SummonAgentResult> {
@@ -249,7 +337,7 @@ export async function summonClaudeAgent(input: SummonAgentInput): Promise<Summon
     tools: buildCouncilTools(service, agent),
   });
 
-  const prompt = buildSummonPrompt();
+  const prompt = buildClaudeSummonPrompt();
   const claudeCodePath = await getClaudeCodeExecutablePath();
 
   const response = query({
@@ -314,6 +402,94 @@ export async function summonClaudeAgent(input: SummonAgentInput): Promise<Summon
     agent,
     model,
     feedback,
+  };
+}
+
+export async function summonCodexAgent(input: SummonAgentInput): Promise<SummonAgentResult> {
+  const agent = normalizeRequiredString(input.agent, "agent");
+  await appendSummonLog({
+    event: "summon_start",
+    data: {
+      agent,
+      model: input.model ?? null,
+      runner: "codex",
+      cwd: process.cwd(),
+    },
+  });
+
+  const store = new FileCouncilStateStore();
+  const state = await store.load();
+  const session = state.session;
+  if (!session || session.status !== "active") {
+    await appendSummonLog({ event: "summon_error", data: { message: "No active council session." } });
+    throw new Error("No active council session.");
+  }
+  const request = getCurrentRequestFromState(state);
+  if (!request) {
+    await appendSummonLog({ event: "summon_error", data: { message: "No active request." } });
+    throw new Error("No active request.");
+  }
+  await appendSummonLog({
+    event: "summon_session",
+    data: { sessionId: session.id, requestId: request.id },
+  });
+
+  const settings = await loadSummonSettings();
+  const savedAgent = settings.agents[agent] ?? { model: null };
+  const model = input.model === undefined ? savedAgent.model : normalizeOptionalString(input.model);
+
+  await upsertSummonSettings({
+    lastUsedAgent: agent,
+    agents: {
+      [agent]: {
+        model,
+      },
+    },
+  });
+  await appendSummonLog({
+    event: "summon_settings",
+    data: { agent, model },
+  });
+
+  const requestFeedback = state.feedback.filter((entry) => entry.requestId === request.id);
+  const prompt = buildCodexSummonPrompt(request, requestFeedback);
+  const codex = new Codex();
+  const thread = codex.startThread({
+    model: model ?? undefined,
+    sandboxMode: "read-only",
+    workingDirectory: process.cwd(),
+    skipGitRepoCheck: true,
+    approvalPolicy: "never",
+    networkAccessEnabled: false,
+    webSearchEnabled: false,
+  });
+
+  let responseText: string | null = null;
+  try {
+    const turn = await thread.run(prompt);
+    responseText = normalizeOptionalString(turn.finalResponse);
+  } catch (error) {
+    const message = getErrorMessage(error);
+    await appendSummonLog({ event: "summon_error", data: { message } });
+    throw new Error(message);
+  }
+
+  if (!responseText) {
+    await appendSummonLog({ event: "summon_error", data: { message: "Codex did not return a response." } });
+    throw new Error("Codex did not return a response.");
+  }
+
+  const service = new CouncilServiceImpl(store);
+  const result = await service.sendResponse({ agentName: agent, content: responseText });
+  await appendSummonLog({
+    event: "summon_success",
+    data: { feedbackId: result.feedback.id, feedbackAuthor: result.feedback.author },
+  });
+
+  return {
+    agent,
+    model,
+    feedback: result.feedback,
   };
 }
 
@@ -392,7 +568,7 @@ function toolError(error: unknown): CallToolResult {
   };
 }
 
-function buildSummonPrompt(): string {
+function buildClaudeSummonPrompt(): string {
   const lines = [
     "You are a Claude agent summoned to the Agents Council.",
     "Use the council tools to join the active session, review the request and prior feedback, then send a single response.",
@@ -403,6 +579,29 @@ function buildSummonPrompt(): string {
     "3) Call mcp__council__send_response with your advice.",
   ];
 
+  return lines.join("\n");
+}
+
+function buildCodexSummonPrompt(request: CouncilRequest, feedback: CouncilFeedback[]): string {
+  const lines = [
+    "You are a Codex agent summoned to the Agents Council.",
+    "Review the council request and prior feedback, then provide a single response.",
+    "",
+    `Council request (from ${request.createdBy}):`,
+    request.content,
+    "",
+    "Prior responses:",
+  ];
+
+  if (feedback.length === 0) {
+    lines.push("None yet.");
+  } else {
+    feedback.forEach((entry) => {
+      lines.push(`- ${entry.author}: ${entry.content}`);
+    });
+  }
+
+  lines.push("", "Reply with your advice only. Do not run commands or call tools.");
   return lines.join("\n");
 }
 
@@ -479,5 +678,5 @@ function resolveSummonResultError(resultMessage: SummonResultMessage | null): st
 }
 
 function getErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : "Claude summon failed.";
+  return error instanceof Error ? error.message : "Summon failed.";
 }

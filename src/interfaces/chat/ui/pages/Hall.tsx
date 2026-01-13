@@ -100,6 +100,10 @@ export function Hall({ name, council, onNameChange }: HallProps) {
   );
   const speakLabel = !isCreator && !hasSpoken ? "Join and speak" : "Speak";
   const summonLabel = currentRequest ? "Summon a New Council" : "Summon the Council";
+  const summonModels = summonSettings?.supported_models_by_agent[summonAgentName] ?? [];
+  const hasSummonModels = summonModels.length > 0;
+  const missingSummonModel =
+    hasSummonModels && summonModel && !summonModels.some((model) => model.value === summonModel);
 
   const sessionLabel =
     sessionStatus === "none" ? "No session" : sessionStatus === "active" ? "In session" : "Concluded";
@@ -131,8 +135,18 @@ export function Hall({ name, council, onNameChange }: HallProps) {
     const agent = nextAgent ?? settings.default_agent ?? settings.supported_agents[0] ?? "";
     setSummonAgentName(agent);
     const agentSettings = settings.agents[agent];
-    const defaultModel = settings.supported_models[0]?.value ?? "default";
-    setSummonModel(agentSettings?.model ?? defaultModel);
+    const savedModel = agentSettings?.model ?? null;
+    const availableModels = settings.supported_models_by_agent[agent] ?? [];
+    if (savedModel) {
+      setSummonModel(savedModel);
+      return;
+    }
+    const [firstModel] = availableModels;
+    if (firstModel) {
+      setSummonModel(firstModel.value);
+      return;
+    }
+    setSummonModel("");
   }, []);
 
   const isNearBottom = useCallback(() => {
@@ -664,29 +678,37 @@ export function Hall({ name, council, onNameChange }: HallProps) {
                 <label className="label" htmlFor="summon-model">
                   Model
                 </label>
-                {summonSettings.supported_models.length > 0 &&
-                summonModel &&
-                !summonSettings.supported_models.some((model) => model.value === summonModel) ? (
-                  <div className="select-hint">Saved model isn't in the current list.</div>
-                ) : null}
-                <div className="select-wrapper">
-                  <select
-                    id="summon-model"
-                    className="select"
-                    value={summonModel}
-                    onChange={(event) => setSummonModel(event.target.value)}
-                    disabled={summonBusy}
-                  >
-                    {summonModel && !summonSettings.supported_models.some((model) => model.value === summonModel) ? (
-                      <option value={summonModel}>{`Saved: ${summonModel}`}</option>
-                    ) : null}
-                    {summonSettings.supported_models.map((model) => (
-                      <option key={model.value} value={model.value}>
-                        {model.description || model.display_name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                {missingSummonModel ? <div className="select-hint">Saved model isn't in the current list.</div> : null}
+                {hasSummonModels ? (
+                  <div className="select-wrapper">
+                    <select
+                      id="summon-model"
+                      className="select"
+                      value={summonModel}
+                      onChange={(event) => setSummonModel(event.target.value)}
+                      disabled={summonBusy}
+                    >
+                      {missingSummonModel ? <option value={summonModel}>{`Saved: ${summonModel}`}</option> : null}
+                      {summonModels.map((model) => (
+                        <option key={model.value} value={model.value}>
+                          {model.description || model.display_name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ) : (
+                  <>
+                    <input
+                      id="summon-model"
+                      className="input"
+                      value={summonModel}
+                      onChange={(event) => setSummonModel(event.target.value)}
+                      placeholder="default"
+                      disabled={summonBusy}
+                    />
+                    <div className="select-hint">Leave empty to use the agent default model.</div>
+                  </>
+                )}
                 <div className="dialog-actions">
                   <button type="button" className="btn-ghost" onClick={closeSummonAgentModal} disabled={summonBusy}>
                     Cancel
