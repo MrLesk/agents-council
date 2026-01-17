@@ -67,7 +67,8 @@ body {
   min-height: 100vh;
   font-family: var(--font-body);
   color: var(--parchment);
-  background: radial-gradient(circle at top, rgba(216, 138, 71, 0.25), transparent 55%),
+  background:
+    radial-gradient(circle at top, rgba(216, 138, 71, 0.25), transparent 55%),
     radial-gradient(circle at 80% 10%, rgba(63, 141, 115, 0.2), transparent 50%),
     linear-gradient(160deg, #15100c 0%, #0f0b08 40%, #18110c 100%);
   letter-spacing: 0.2px;
@@ -164,7 +165,9 @@ body::before {
   height: 12px;
   border-radius: 50%;
   flex-shrink: 0;
-  transition: background-color 200ms ease, box-shadow 200ms ease;
+  transition:
+    background-color 200ms ease,
+    box-shadow 200ms ease;
 }
 
 .status-orb-active {
@@ -191,7 +194,6 @@ body::before {
   background: var(--crimson);
   box-shadow: 0 0 8px var(--crimson-glow);
 }
-
 
 /* Status indicator group: orb + label */
 .status-indicator {
@@ -228,7 +230,6 @@ body::before {
   border-color: rgba(140, 59, 46, 0.5);
 }
 
-
 .status-banner {
   padding: 10px 16px;
   border-radius: 12px;
@@ -238,7 +239,6 @@ body::before {
   background: rgba(24, 18, 14, 0.85);
   text-align: center;
 }
-
 
 .status-banner-offline {
   color: var(--crimson);
@@ -278,11 +278,7 @@ body::before {
   position: relative;
   padding: 22px;
   border-radius: var(--radius);
-  background: linear-gradient(
-    160deg,
-    rgba(43, 35, 28, 0.95),
-    rgba(18, 13, 10, 0.98)
-  );
+  background: linear-gradient(160deg, rgba(43, 35, 28, 0.95), rgba(18, 13, 10, 0.98));
   border: 2px solid var(--gold);
   box-shadow:
     0 0 20px rgba(210, 177, 119, 0.15),
@@ -297,11 +293,7 @@ body::before {
   position: absolute;
   inset: 0;
   border-radius: calc(var(--radius) - 2px);
-  background: radial-gradient(
-    circle at top left,
-    rgba(210, 177, 119, 0.12),
-    transparent 55%
-  );
+  background: radial-gradient(circle at top left, rgba(210, 177, 119, 0.12), transparent 55%);
   pointer-events: none;
   z-index: 0;
 }
@@ -587,7 +579,9 @@ body::before {
 
 .matter-seal-input .textarea:focus {
   border-color: rgba(140, 59, 46, 0.7);
-  box-shadow: 0 0 0 2px rgba(140, 59, 46, 0.25), inset 0 2px 6px rgba(6, 4, 3, 0.5);
+  box-shadow:
+    0 0 0 2px rgba(140, 59, 46, 0.25),
+    inset 0 2px 6px rgba(6, 4, 3, 0.5);
 }
 
 .seal-helper {
@@ -712,7 +706,9 @@ body::before {
 .select:focus {
   outline: none;
   border-color: rgba(232, 195, 123, 0.95);
-  box-shadow: 0 0 0 2px rgba(210, 177, 119, 0.35), inset 0 2px 6px rgba(6, 4, 3, 0.5);
+  box-shadow:
+    0 0 0 2px rgba(210, 177, 119, 0.35),
+    inset 0 2px 6px rgba(6, 4, 3, 0.5);
 }
 
 .select {
@@ -721,12 +717,13 @@ body::before {
   -webkit-appearance: none;
   -moz-appearance: none;
   padding-right: 52px;
-  background:
-    linear-gradient(135deg, rgba(210, 177, 119, 0.08) 0%, transparent 50%),
-    rgba(14, 10, 8, 0.85);
+  background: linear-gradient(135deg, rgba(210, 177, 119, 0.08) 0%, transparent 50%), rgba(14, 10, 8, 0.85);
   background-color: rgba(14, 10, 8, 0.85);
   position: relative;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    background 0.2s ease;
 }
 
 /* Dropdown arrow indicator */
@@ -768,9 +765,7 @@ body::before {
 
 .select:hover {
   border-color: rgba(232, 195, 123, 0.75);
-  background:
-    linear-gradient(135deg, rgba(210, 177, 119, 0.12) 0%, transparent 50%),
-    rgba(20, 14, 10, 0.9);
+  background: linear-gradient(135deg, rgba(210, 177, 119, 0.12) 0%, transparent 50%), rgba(20, 14, 10, 0.9);
 }
 
 .select-wrapper:hover::after {
@@ -810,7 +805,10 @@ body::before {
   letter-spacing: 0.8px;
   text-transform: uppercase;
   cursor: pointer;
-  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease,
+    border-color 0.2s ease;
 }
 
 .btn-settings {
@@ -840,12 +838,16 @@ body::before {
 
 .btn-primary {
   background: linear-gradient(135deg, rgba(220, 182, 116, 0.85), rgba(153, 104, 52, 0.9));
-  box-shadow: inset 0 1px 0 rgba(255, 247, 226, 0.3), 0 10px 20px rgba(6, 4, 3, 0.45);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 247, 226, 0.3),
+    0 10px 20px rgba(6, 4, 3, 0.45);
   border-color: rgba(210, 177, 119, 0.85);
 }
 
 .btn-primary:hover {
-  box-shadow: 0 14px 26px rgba(6, 4, 3, 0.5), 0 0 18px rgba(216, 138, 71, 0.35);
+  box-shadow:
+    0 14px 26px rgba(6, 4, 3, 0.5),
+    0 0 18px rgba(216, 138, 71, 0.35);
 }
 
 .btn-secondary {
@@ -1225,7 +1227,8 @@ body::before {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background: radial-gradient(circle at 50% 28%, rgba(210, 177, 119, 0.22), transparent 55%),
+  background:
+    radial-gradient(circle at 50% 28%, rgba(210, 177, 119, 0.22), transparent 55%),
     radial-gradient(circle at 50% 60%, rgba(0, 0, 0, 0.45), transparent 70%);
   z-index: 0;
 }
@@ -1254,7 +1257,9 @@ body::before {
   overflow: hidden;
   background: linear-gradient(160deg, rgba(24, 18, 14, 0.98), rgba(10, 8, 7, 0.99));
   border: 1px solid rgba(210, 177, 119, 0.25);
-  box-shadow: 0 24px 46px rgba(6, 4, 3, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.03),
+  box-shadow:
+    0 24px 46px rgba(6, 4, 3, 0.55),
+    inset 0 1px 0 rgba(255, 255, 255, 0.03),
     inset 0 0 22px rgba(210, 177, 119, 0.1);
 }
 
@@ -1262,8 +1267,15 @@ body::before {
   content: "";
   position: absolute;
   inset: 0;
-  background: radial-gradient(circle at 50% 30%, rgba(210, 177, 119, 0.12), transparent 60%),
-    repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.025), rgba(255, 255, 255, 0.025) 1px, transparent 1px, transparent 8px);
+  background:
+    radial-gradient(circle at 50% 30%, rgba(210, 177, 119, 0.12), transparent 60%),
+    repeating-linear-gradient(
+      45deg,
+      rgba(255, 255, 255, 0.025),
+      rgba(255, 255, 255, 0.025) 1px,
+      transparent 1px,
+      transparent 8px
+    );
   opacity: 0.3;
   pointer-events: none;
 }
@@ -1421,11 +1433,7 @@ body::before {
   max-width: 520px;
   width: calc(100% - 48px);
   border-radius: var(--radius);
-  background: linear-gradient(
-    160deg,
-    rgba(43, 35, 28, 0.98),
-    rgba(18, 13, 10, 0.99)
-  );
+  background: linear-gradient(160deg, rgba(43, 35, 28, 0.98), rgba(18, 13, 10, 0.99));
   border: 2px solid var(--gold);
   box-shadow:
     0 0 40px rgba(0, 0, 0, 0.8),
@@ -1448,11 +1456,7 @@ body::before {
   position: relative;
   padding: 20px 24px;
   border-bottom: 1px solid var(--gold);
-  background: linear-gradient(
-    180deg,
-    rgba(210, 177, 119, 0.12),
-    transparent
-  );
+  background: linear-gradient(180deg, rgba(210, 177, 119, 0.12), transparent);
 }
 
 .dialog-header h2,

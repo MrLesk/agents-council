@@ -88,7 +88,10 @@ export async function getSettings(): Promise<GlobalSettingsResponse> {
   return postJson<GlobalSettingsResponse>("/get-settings", {});
 }
 
-export async function updateSettings(payload: { claude_code_path?: string | null }): Promise<GlobalSettingsResponse> {
+export async function updateSettings(payload: {
+  claude_code_path?: string | null;
+  codex_path?: string | null;
+}): Promise<GlobalSettingsResponse> {
   return postJson<GlobalSettingsResponse>("/update-settings", payload);
 }
 

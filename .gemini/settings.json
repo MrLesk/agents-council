@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "council": {
+      "command": "bun",
+      "args": ["run", "cli", "mcp"]
+    }
+  }
+}

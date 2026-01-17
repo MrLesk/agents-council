@@ -24,7 +24,7 @@ Inspired by Andrej Karpathy's [LLM Council](https://github.com/karpathy/llm-coun
 ## ✨ Features
 
 - **Centralized agent communication** via MCP stdio server (no complex peer-to-peer networking).
-- **Summon Claude**: Instantly summon a new instance of Claude into your council when needed. Reuses your local Claude Code authentication.
+- **Summon Claude or Codex**: Instantly summon Claude or Codex into your council when needed. Reuses local CLI authentication where available.
 - **Session Preservation**: Start agents with your specific context, let them collaborate, and resume when they are done.
 - **Human Participation**: A local chat UI to monitor or join the discussion.
 - **Private & Local**: State is stored on disk at `~/.agents-council/state.json`.
@@ -145,20 +145,22 @@ Run the local web interface for human participants:
 council chat
 ```
 
-The chat UI runs on `localhost` and allows you to monitor the session in real-time. It also supports **summoning** a Claude agent into an active council. The summon modal lets you pick agent/model, and selections persist in `~/.agents-council/config.json`.
+The chat UI runs on `localhost` and allows you to monitor the session in real-time. It also supports **summoning** Claude or Codex agents into an active council. The summon modal lets you pick agent/model, and selections persist in `~/.agents-council/config.json`.
 
 ---
 
-## 🪄 Summon Claude
+## 🪄 Summon Agents
 
-The Summon feature lets you bring a new Claude agent into your council session. This agent joins the discussion, reviews the matter and prior feedback, then contributes its own response.
+The Summon feature lets you bring a Claude or Codex agent into your council session. These agents join the discussion, review the matter and prior feedback, then contribute their response.
 
-### Prerequisites
+### Summon Claude
+
+Prerequisites:
 
 - [Claude Code](https://github.com/anthropics/claude-code) must be installed and available in your PATH
 - Run `claude` at least once to authenticate
 
-### How it works
+How it works:
 
 1. A summoned Claude agent joins the active council session
 2. It reads the current request and any prior feedback
@@ -166,7 +168,7 @@ The Summon feature lets you bring a new Claude agent into your council session. 
 4. The agent is granted read-only access to the project (Read/Glob/Grep) plus council tools
 5. Other tools follow your Claude Code user permission settings
 
-### Advanced Configuration
+Advanced Configuration:
 
 These settings are optional. By default, Agents Council looks for `claude` in your PATH.
 
@@ -175,6 +177,30 @@ These settings are optional. By default, Agents Council looks for `claude` in yo
 | **Claude Code Path** (Settings UI) | `claude` | Custom path to the Claude Code executable |
 | `CLAUDE_CODE_PATH` (env var) | `claude` | Alternative way to set the path |
 | `AGENTS_COUNCIL_SUMMON_DEBUG` | (unset) | Set to `1` to enable debug logging |
+
+### Summon Codex
+
+Prerequisites:
+
+- Run `codex login` once (authentication is handled by the Codex SDK/CLI)
+- Optional: set a default model in `~/.codex/config.toml` (for example, `model = "gpt-5.2-codex"`)
+
+How it works:
+
+1. A summoned Codex agent reads the current request and any prior feedback
+2. It returns a single response that is recorded in the council
+3. Codex runs via the Codex SDK CLI in read-only mode by default
+
+Advanced Configuration:
+
+Authentication is handled by the Codex SDK/CLI (typically `codex login`). If your Codex setup uses API keys or a custom base URL, those will still be honored.
+
+These settings are optional. By default, Agents Council uses the bundled Codex CLI from the SDK.
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| **Codex CLI Path** (Settings UI) | bundled | Custom path to the Codex CLI executable |
+| `CODEX_PATH` (env var) | (unset) | Alternative way to set the path |
 
 ---
 
@@ -185,7 +211,7 @@ These settings are optional. By default, Agents Council looks for `claude` in yo
 - `get_current_session_data`: Poll for new responses (supports cursors).
 - `send_response`: Submit feedback.
 - `close_council`: End the session with a conclusion.
-- `summon_agent`: Summon Claude into the current council.
+- `summon_agent`: Summon Claude or Codex into the current council.
 
 ---
 

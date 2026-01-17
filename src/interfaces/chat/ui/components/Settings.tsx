@@ -10,6 +10,7 @@ type SettingsProps = {
 export function Settings({ currentName, onSave, onClose }: SettingsProps) {
   const [draftName, setDraftName] = useState(currentName);
   const [claudeCodePath, setClaudeCodePath] = useState("");
+  const [codexPath, setCodexPath] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -22,6 +23,7 @@ export function Settings({ currentName, onSave, onClose }: SettingsProps) {
       .then((settings) => {
         if (!cancelled) {
           setClaudeCodePath(settings.claude_code_path ?? "");
+          setCodexPath(settings.codex_path ?? "");
         }
       })
       .catch((err) => {
@@ -51,8 +53,10 @@ export function Settings({ currentName, onSave, onClose }: SettingsProps) {
 
     try {
       const pathValue = claudeCodePath.trim();
+      const codexPathValue = codexPath.trim();
       await updateSettings({
         claude_code_path: pathValue.length > 0 ? pathValue : null,
+        codex_path: codexPathValue.length > 0 ? codexPathValue : null,
       });
       onSave(trimmed);
     } catch (err) {
@@ -124,8 +128,23 @@ export function Settings({ currentName, onSave, onClose }: SettingsProps) {
               disabled={loading || saving}
             />
             <p className="settings-hint">
-              Path to the Claude Code executable. Leave empty to use <code>claude</code> from PATH.
-              Can also be set via <code>CLAUDE_CODE_PATH</code> environment variable.
+              Path to the Claude Code executable. Leave empty to use <code>claude</code> from PATH. Can also be set via{" "}
+              <code>CLAUDE_CODE_PATH</code> environment variable.
+            </p>
+            <label className="label" htmlFor="settings-codex-path">
+              Codex CLI Path
+            </label>
+            <input
+              id="settings-codex-path"
+              className="input"
+              value={codexPath}
+              onChange={(event) => setCodexPath(event.target.value)}
+              placeholder="bundled"
+              disabled={loading || saving}
+            />
+            <p className="settings-hint">
+              Path to the Codex CLI executable. Leave empty to use the bundled Codex binary. Can also be set via{" "}
+              <code>CODEX_PATH</code> environment variable.
             </p>
           </div>
 

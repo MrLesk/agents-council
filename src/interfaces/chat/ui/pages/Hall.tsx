@@ -100,6 +100,11 @@ export function Hall({ name, council, onNameChange }: HallProps) {
   );
   const speakLabel = !isCreator && !hasSpoken ? "Join and speak" : "Speak";
   const summonLabel = currentRequest ? "Summon a New Council" : "Summon the Council";
+  const summonModels = summonSettings?.supported_models_by_agent[summonAgentName] ?? [];
+  const hasSummonModels = summonModels.length > 0;
+  const isCodexAgent = summonAgentName === "Codex";
+  const missingSummonModel =
+    summonModel.trim().length > 0 ? !summonModels.some((model) => model.value === summonModel) : false;
 
   const sessionLabel =
     sessionStatus === "none" ? "No session" : sessionStatus === "active" ? "In session" : "Concluded";
@@ -131,8 +136,18 @@ export function Hall({ name, council, onNameChange }: HallProps) {
     const agent = nextAgent ?? settings.default_agent ?? settings.supported_agents[0] ?? "";
     setSummonAgentName(agent);
     const agentSettings = settings.agents[agent];
-    const defaultModel = settings.supported_models[0]?.value ?? "default";
-    setSummonModel(agentSettings?.model ?? defaultModel);
+    const savedModel = agentSettings?.model ?? null;
+    const availableModels = settings.supported_models_by_agent[agent] ?? [];
+    if (savedModel) {
+      setSummonModel(savedModel);
+      return;
+    }
+    const [firstModel] = availableModels;
+    if (firstModel) {
+      setSummonModel(firstModel.value);
+      return;
+    }
+    setSummonModel("");
   }, []);
 
   const isNearBottom = useCallback(() => {
@@ -664,10 +679,9 @@ export function Hall({ name, council, onNameChange }: HallProps) {
                 <label className="label" htmlFor="summon-model">
                   Model
                 </label>
-                {summonSettings.supported_models.length > 0 &&
-                summonModel &&
-                !summonSettings.supported_models.some((model) => model.value === summonModel) ? (
-                  <div className="select-hint">Saved model isn't in the current list.</div>
+                {missingSummonModel ? <div className="select-hint">Saved model isn't in the current list.</div> : null}
+                {!hasSummonModels ? (
+                  <div className="select-hint">No known models for this agent. Default settings will be used.</div>
                 ) : null}
                 <div className="select-wrapper">
                   <select
@@ -677,10 +691,9 @@ export function Hall({ name, council, onNameChange }: HallProps) {
                     onChange={(event) => setSummonModel(event.target.value)}
                     disabled={summonBusy}
                   >
-                    {summonModel && !summonSettings.supported_models.some((model) => model.value === summonModel) ? (
-                      <option value={summonModel}>{`Saved: ${summonModel}`}</option>
-                    ) : null}
-                    {summonSettings.supported_models.map((model) => (
+                    {isCodexAgent ? <option value="">Default</option> : null}
+                    {missingSummonModel ? <option value={summonModel}>{`Saved: ${summonModel}`}</option> : null}
+                    {summonModels.map((model) => (
                       <option key={model.value} value={model.value}>
                         {model.description || model.display_name}
                       </option>
