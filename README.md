@@ -182,7 +182,7 @@ These settings are optional. By default, Agents Council looks for `claude` in yo
 
 Prerequisites:
 
-- Run `codex login` once, or set `CODEX_API_KEY`
+- Run `codex login` once (authentication is handled by the Codex SDK/CLI)
 - Optional: set a default model in `~/.codex/config.toml` (for example, `model = "gpt-5.2-codex"`)
 
 How it works:
@@ -193,8 +193,14 @@ How it works:
 
 Advanced Configuration:
 
-- `CODEX_API_KEY` (env var) for API authentication
-- `OPENAI_BASE_URL` (env var) to target a custom endpoint
+Authentication is handled by the Codex SDK/CLI (typically `codex login`). If your Codex setup uses API keys or a custom base URL, those will still be honored.
+
+These settings are optional. By default, Agents Council uses the bundled Codex CLI from the SDK.
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| **Codex CLI Path** (Settings UI) | bundled | Custom path to the Codex CLI executable |
+| `CODEX_PATH` (env var) | (unset) | Alternative way to set the path |
 
 ---
 

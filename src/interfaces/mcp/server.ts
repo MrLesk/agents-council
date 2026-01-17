@@ -148,6 +148,22 @@ function registerTools(options: {
       agent: z.enum(SUPPORTED_SUMMON_AGENTS),
       model: modelSchema.optional(),
     })
+    .superRefine((data, ctx) => {
+      if (!data.model) {
+        return;
+      }
+      const models = options.supportedModelsByAgent[data.agent] ?? [];
+      if (models.length === 0) {
+        return;
+      }
+      if (!models.some((model) => model.value === data.model)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["model"],
+          message: "Model is not supported for this agent.",
+        });
+      }
+    })
     .strict();
 
   const startCouncilDescription = options.hasDefaultAgentName

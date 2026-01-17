@@ -96,6 +96,7 @@ export type SummonSettingsResponse = {
 
 export type GlobalSettingsResponse = {
   claude_code_path: string | null;
+  codex_path: string | null;
 };
 
 export type SummonAgentResponse = {

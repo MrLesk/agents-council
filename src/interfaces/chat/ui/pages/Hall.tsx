@@ -102,8 +102,9 @@ export function Hall({ name, council, onNameChange }: HallProps) {
   const summonLabel = currentRequest ? "Summon a New Council" : "Summon the Council";
   const summonModels = summonSettings?.supported_models_by_agent[summonAgentName] ?? [];
   const hasSummonModels = summonModels.length > 0;
+  const isCodexAgent = summonAgentName === "Codex";
   const missingSummonModel =
-    hasSummonModels && summonModel && !summonModels.some((model) => model.value === summonModel);
+    hasSummonModels && summonModel ? !summonModels.some((model) => model.value === summonModel) : false;
 
   const sessionLabel =
     sessionStatus === "none" ? "No session" : sessionStatus === "active" ? "In session" : "Concluded";
@@ -679,36 +680,26 @@ export function Hall({ name, council, onNameChange }: HallProps) {
                   Model
                 </label>
                 {missingSummonModel ? <div className="select-hint">Saved model isn't in the current list.</div> : null}
-                {hasSummonModels ? (
-                  <div className="select-wrapper">
-                    <select
-                      id="summon-model"
-                      className="select"
-                      value={summonModel}
-                      onChange={(event) => setSummonModel(event.target.value)}
-                      disabled={summonBusy}
-                    >
-                      {missingSummonModel ? <option value={summonModel}>{`Saved: ${summonModel}`}</option> : null}
-                      {summonModels.map((model) => (
-                        <option key={model.value} value={model.value}>
-                          {model.description || model.display_name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                ) : (
-                  <>
-                    <input
-                      id="summon-model"
-                      className="input"
-                      value={summonModel}
-                      onChange={(event) => setSummonModel(event.target.value)}
-                      placeholder="default"
-                      disabled={summonBusy}
-                    />
-                    <div className="select-hint">Leave empty to use the agent default model.</div>
-                  </>
-                )}
+                {!hasSummonModels ? (
+                  <div className="select-hint">No known models for this agent. Default settings will be used.</div>
+                ) : null}
+                <div className="select-wrapper">
+                  <select
+                    id="summon-model"
+                    className="select"
+                    value={summonModel}
+                    onChange={(event) => setSummonModel(event.target.value)}
+                    disabled={summonBusy}
+                  >
+                    {isCodexAgent ? <option value="">Default</option> : null}
+                    {missingSummonModel ? <option value={summonModel}>{`Saved: ${summonModel}`}</option> : null}
+                    {summonModels.map((model) => (
+                      <option key={model.value} value={model.value}>
+                        {model.description || model.display_name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
                 <div className="dialog-actions">
                   <button type="button" className="btn-ghost" onClick={closeSummonAgentModal} disabled={summonBusy}>
                     Cancel

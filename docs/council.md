@@ -264,7 +264,12 @@ The config path uses the same directory as the resolved state path.
 Summon prerequisites:
 
 - Claude: install Claude Code and run `claude` once to authenticate.
-- Codex: run `codex login` once (or set `CODEX_API_KEY`); optionally set a default model in `~/.codex/config.toml`.
+- Codex: run `codex login` once (recommended; authentication is handled by the Codex SDK/CLI); optionally set a default model in `~/.codex/config.toml`. If your Codex setup uses API keys, it will still work.
+
+Codex CLI path (optional):
+
+- Set the Codex CLI path in the Settings UI to use a custom executable.
+- Or set `CODEX_PATH` to override the bundled Codex CLI path.
 
 Enable summon debug logging (writes `summon-debug.log` in the current working directory):
 

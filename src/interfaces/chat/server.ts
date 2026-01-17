@@ -62,6 +62,7 @@ type SummonSettingsResponse = {
 
 type GlobalSettingsResponse = {
   claude_code_path: string | null;
+  codex_path: string | null;
 };
 
 export type ChatServer = {
@@ -294,6 +295,7 @@ async function handleGetSettings(): Promise<Response> {
   const settings = await loadSummonSettings();
   const response: GlobalSettingsResponse = {
     claude_code_path: settings.claudeCodePath,
+    codex_path: settings.codexPath,
   };
   return Response.json(response);
 }
@@ -301,15 +303,20 @@ async function handleGetSettings(): Promise<Response> {
 async function handleUpdateSettings(req: Request): Promise<Response> {
   const body = await readJsonBody(req);
   const claudeCodePath = optionalStringOrNull(body, "claude_code_path");
+  const codexPath = optionalStringOrNull(body, "codex_path");
 
-  const update: { claudeCodePath?: string | null } = {};
+  const update: { claudeCodePath?: string | null; codexPath?: string | null } = {};
   if (claudeCodePath !== undefined) {
     update.claudeCodePath = claudeCodePath;
+  }
+  if (codexPath !== undefined) {
+    update.codexPath = codexPath;
   }
 
   const updated = await upsertSummonSettings(update);
   const response: GlobalSettingsResponse = {
     claude_code_path: updated.claudeCodePath,
+    codex_path: updated.codexPath,
   };
   return Response.json(response);
 }

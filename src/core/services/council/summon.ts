@@ -2,7 +2,6 @@ import { createSdkMcpServer, query, tool } from "@anthropic-ai/claude-agent-sdk"
 import { Codex } from "@openai/codex-sdk";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { appendFile, readFile } from "node:fs/promises";
-import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { z } from "zod";
@@ -65,9 +64,7 @@ const SUMMON_TOOL_PREFIX = "mcp__council__";
 const READ_ONLY_TOOLS = new Set(["Read", "Glob", "Grep"]);
 const SUMMON_DEBUG_ENV = "AGENTS_COUNCIL_SUMMON_DEBUG";
 const CLAUDE_CODE_PATH_ENV = "CLAUDE_CODE_PATH";
-const CODEX_API_KEY_ENV = "CODEX_API_KEY";
-const OPENAI_API_KEY_ENV = "OPENAI_API_KEY";
-const OPENAI_BASE_URL_ENV = "OPENAI_BASE_URL";
+const CODEX_PATH_ENV = "CODEX_PATH";
 const MODEL_CACHE_TTL_MS = 5 * 60 * 1000;
 const CODEX_CONFIG_PATH = path.join(os.homedir(), ".codex", "config.toml");
 
@@ -76,7 +73,7 @@ function isAbsolutePath(p: string): boolean {
   return p.startsWith("/") || /^[a-zA-Z]:[\\/]/.test(p) || p.startsWith("\\\\");
 }
 
-async function resolveClaudePath(command: string): Promise<string> {
+async function resolveExecutablePath(command: string): Promise<string> {
   // If already an absolute path, return as-is
   if (isAbsolutePath(command)) {
     return command;
@@ -110,13 +107,26 @@ async function getClaudeCodeExecutablePath(): Promise<string> {
   // Priority: config > env var > default "claude"
   const settings = await loadSummonSettings();
   if (settings.claudeCodePath) {
-    return resolveClaudePath(settings.claudeCodePath);
+    return resolveExecutablePath(settings.claudeCodePath);
   }
   const envPath = process.env[CLAUDE_CODE_PATH_ENV]?.trim();
   if (envPath && envPath.length > 0) {
-    return resolveClaudePath(envPath);
+    return resolveExecutablePath(envPath);
   }
-  return resolveClaudePath("claude");
+  return resolveExecutablePath("claude");
+}
+
+async function getCodexExecutablePath(): Promise<string | null> {
+  // Priority: config > env var > default (bundled binary)
+  const settings = await loadSummonSettings();
+  if (settings.codexPath) {
+    return resolveExecutablePath(settings.codexPath);
+  }
+  const envPath = process.env[CODEX_PATH_ENV]?.trim();
+  if (envPath && envPath.length > 0) {
+    return resolveExecutablePath(envPath);
+  }
+  return null;
 }
 
 let cachedVersion: string | null = null;
@@ -234,7 +244,7 @@ async function loadCodexSupportedModels(): Promise<SummonModelInfo[]> {
         {
           value: defaultModel,
           displayName: defaultModel,
-          description: "Default from ~/.codex/config.toml",
+          description: "",
         },
       ]
     : [];
@@ -254,13 +264,17 @@ async function loadCodexDefaultModel(): Promise<string | null> {
 }
 
 function parseCodexModelFromConfig(config: string): string | null {
-  const doubleQuoted = config.match(/^\s*model\s*=\s*"(.*?)"\s*$/m);
-  if (doubleQuoted?.[1]) {
-    return doubleQuoted[1].trim();
-  }
-  const singleQuoted = config.match(/^\s*model\s*=\s*'(.*?)'\s*$/m);
-  if (singleQuoted?.[1]) {
-    return singleQuoted[1].trim();
+  try {
+    const parsed = Bun.TOML.parse(config);
+    if (parsed && typeof parsed === "object" && "model" in parsed) {
+      const value = (parsed as Record<string, unknown>).model;
+      if (typeof value === "string") {
+        const trimmed = value.trim();
+        return trimmed.length > 0 ? trimmed : null;
+      }
+    }
+  } catch {
+    return null;
   }
   return null;
 }
@@ -453,7 +467,8 @@ export async function summonCodexAgent(input: SummonAgentInput): Promise<SummonA
 
   const requestFeedback = state.feedback.filter((entry) => entry.requestId === request.id);
   const prompt = buildCodexSummonPrompt(request, requestFeedback);
-  const codex = new Codex();
+  const codexPath = await getCodexExecutablePath();
+  const codex = codexPath ? new Codex({ codexPathOverride: codexPath }) : new Codex();
   const thread = codex.startThread({
     model: model ?? undefined,
     sandboxMode: "read-only",

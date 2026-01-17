@@ -129,5 +129,4 @@ const codex = new Codex({
 });
 ```
 
-The SDK still injects its required variables (such as `OPENAI_BASE_URL` and `CODEX_API_KEY`) on top of the environment you
-provide.
+Agents Council leaves Codex authentication to the SDK/CLI defaults (typically `codex login`, but existing API-key setups also work).
