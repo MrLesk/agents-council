@@ -104,7 +104,7 @@ export function Hall({ name, council, onNameChange }: HallProps) {
   const hasSummonModels = summonModels.length > 0;
   const isCodexAgent = summonAgentName === "Codex";
   const missingSummonModel =
-    hasSummonModels && summonModel ? !summonModels.some((model) => model.value === summonModel) : false;
+    summonModel.trim().length > 0 ? !summonModels.some((model) => model.value === summonModel) : false;
 
   const sessionLabel =
     sessionStatus === "none" ? "No session" : sessionStatus === "active" ? "In session" : "Concluded";
