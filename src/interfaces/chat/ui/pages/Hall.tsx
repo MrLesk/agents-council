@@ -135,6 +135,7 @@ export function Hall({ name, council, onNameChange }: HallProps) {
   const selectReasoningValue = allowReasoningOverride ? summonReasoningEffort : "";
   const missingSummonModel =
     summonModel.trim().length > 0 ? !summonModels.some((model) => model.value === summonModel) : false;
+  const currentRequestId = currentRequest?.id ?? null;
   const displayPendingParticipants = Array.from(new Set([...pendingParticipants, ...localPendingAgents]));
 
   const sessionLabel =
@@ -246,11 +247,13 @@ export function Hall({ name, council, onNameChange }: HallProps) {
   }, [showSummonAgent, applySummonDefaults]);
 
   useEffect(() => {
+    if (!currentRequestId) {
+      return;
+    }
     setLocalPendingAgents([]);
-  }, [currentRequest?.id]);
+  }, [currentRequestId]);
 
   useEffect(() => {
-    const currentRequestId = currentRequest?.id;
     if (!currentRequestId) {
       return;
     }
@@ -259,7 +262,7 @@ export function Hall({ name, council, onNameChange }: HallProps) {
         (agent) => !feedback.some((entry) => entry.request_id === currentRequestId && entry.author === agent),
       ),
     );
-  }, [currentRequest?.id, feedback]);
+  }, [currentRequestId, feedback]);
 
   useEffect(() => {
     if (!summonSettings) {
