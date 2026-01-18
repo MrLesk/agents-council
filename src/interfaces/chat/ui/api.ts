@@ -70,9 +70,14 @@ export async function getSummonSettings(): Promise<SummonSettingsResponse> {
   return postJson<SummonSettingsResponse>("/get-summon-settings", {});
 }
 
+export async function refreshSummonModels(): Promise<SummonSettingsResponse> {
+  return postJson<SummonSettingsResponse>("/refresh-summon-models", {});
+}
+
 export async function updateSummonSettings(payload: {
   agent: string;
   model?: string | null;
+  reasoning_effort?: string | null;
 }): Promise<SummonSettingsResponse> {
   return postJson<SummonSettingsResponse>("/update-summon-settings", payload);
 }
@@ -80,6 +85,7 @@ export async function updateSummonSettings(payload: {
 export async function summonAgent(payload: {
   agent?: string | null;
   model?: string | null;
+  reasoning_effort?: string | null;
 }): Promise<SummonAgentResponse> {
   return postJson<SummonAgentResponse>("/summon-agent", payload);
 }
@@ -88,7 +94,10 @@ export async function getSettings(): Promise<GlobalSettingsResponse> {
   return postJson<GlobalSettingsResponse>("/get-settings", {});
 }
 
-export async function updateSettings(payload: { claude_code_path?: string | null }): Promise<GlobalSettingsResponse> {
+export async function updateSettings(payload: {
+  claude_code_path?: string | null;
+  codex_path?: string | null;
+}): Promise<GlobalSettingsResponse> {
   return postJson<GlobalSettingsResponse>("/update-settings", payload);
 }
 

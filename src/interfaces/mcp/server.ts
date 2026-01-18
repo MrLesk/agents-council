@@ -7,9 +7,9 @@ import { loadSummonSettings } from "../../core/config/summonSettings";
 import { CouncilServiceImpl } from "../../core/services/council";
 import {
   SUPPORTED_SUMMON_AGENTS,
-  loadSupportedSummonModels,
+  loadCachedSummonModelsByAgent,
   resolveDefaultSummonAgent,
-  summonClaudeAgent,
+  summonAgent,
 } from "../../core/services/council/summon";
 import { FileCouncilStateStore } from "../../core/state/fileStateStore";
 import {
@@ -91,8 +91,8 @@ export async function startMcpServer(options: { format?: ResponseFormat; agentNa
   responseFormat = format;
   const configuredAgentName = options.agentName?.trim() || null;
   agentName = configuredAgentName;
-  const supportedModels = await loadSupportedSummonModels();
-  registerTools({ hasDefaultAgentName: configuredAgentName !== null, supportedModels });
+  const supportedModelsByAgent = await loadCachedSummonModelsByAgent();
+  registerTools({ hasDefaultAgentName: configuredAgentName !== null, supportedModelsByAgent });
   const transport = new StdioServerTransport();
   await server.connect(transport);
   console.error("Council MCP server running on stdio");
@@ -100,7 +100,7 @@ export async function startMcpServer(options: { format?: ResponseFormat; agentNa
 
 function registerTools(options: {
   hasDefaultAgentName: boolean;
-  supportedModels: { value: string; displayName: string; description: string }[];
+  supportedModelsByAgent: Record<string, { value: string; displayName: string; description: string }[]>;
 }): void {
   if (toolsRegistered) {
     return;
@@ -142,12 +142,32 @@ function registerTools(options: {
     })
     .strict();
 
-  const modelOptions = options.supportedModels.map((model) => model.value).filter((value) => value.length > 0);
-  const modelSchema = modelOptions.length > 0 ? z.enum(modelOptions as [string, ...string[]]) : z.string().min(1);
+  const modelSchema = z.string().min(1);
   const summonAgentSchema: z.ZodTypeAny = z
     .object({
       agent: z.enum(SUPPORTED_SUMMON_AGENTS),
       model: modelSchema.optional(),
+    })
+    .superRefine((data, ctx) => {
+      if (!data.model) {
+        return;
+      }
+      const models = options.supportedModelsByAgent[data.agent] ?? [];
+      if (models.length === 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["model"],
+          message: "Model override is unavailable without a cached model list.",
+        });
+        return;
+      }
+      if (!models.some((model) => model.value === data.model)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["model"],
+          message: "Model is not supported for this agent.",
+        });
+      }
     })
     .strict();
 
@@ -212,10 +232,7 @@ function registerTools(options: {
     ? "Join the current council session and fetch the request and responses."
     : "Join the current council session and fetch the request and responses. Provide agent_name to identify yourself; the server may append #1, #2, etc. if the name is already taken.";
 
-  const modelDescriptions =
-    options.supportedModels.length > 0
-      ? options.supportedModels.map((m) => `${m.value}: ${m.description || m.displayName}`).join(", ")
-      : "";
+  const modelDescriptions = formatSummonModelDescriptions(options.supportedModelsByAgent);
   const summonAgentDescription = modelDescriptions
     ? `Summon an agent into the active council. agent is required; model is an optional override. Defaults use the last used agent or alphabetical fallback. Available models: ${modelDescriptions}.`
     : "Summon an agent into the active council. agent is required; model is an optional override. Defaults use the last used agent or alphabetical fallback.";
@@ -305,7 +322,7 @@ function registerTools(options: {
         const settings = await loadSummonSettings();
         const defaultAgent = resolveDefaultSummonAgent(settings.lastUsedAgent, SUPPORTED_SUMMON_AGENTS);
         const resolvedAgent = params.agent || defaultAgent;
-        const result = await summonClaudeAgent(
+        const result = await summonAgent(
           mapSummonAgentInput({
             agent: resolvedAgent,
             model: params.model,
@@ -318,6 +335,19 @@ function registerTools(options: {
       }
     },
   );
+}
+
+function formatSummonModelDescriptions(
+  modelsByAgent: Record<string, { value: string; displayName: string; description: string }[]>,
+): string {
+  const segments = Object.entries(modelsByAgent)
+    .filter(([, models]) => models.length > 0)
+    .map(([agent, models]) => {
+      const entries = models.map((model) => `${model.value}: ${model.description || model.displayName}`).join(", ");
+      return `${agent}: ${entries}`;
+    });
+
+  return segments.join(" | ");
 }
 
 function toolOk<T extends Record<string, unknown>>(

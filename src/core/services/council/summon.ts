@@ -1,15 +1,23 @@
 import { createSdkMcpServer, query, tool } from "@anthropic-ai/claude-agent-sdk";
+import { Codex } from "@openai/codex-sdk";
+import type { ModelReasoningEffort } from "@openai/codex-sdk";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import { appendFile } from "node:fs/promises";
+import { appendFile, readFile } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { z } from "zod";
 
-import { loadSummonSettings, upsertSummonSettings } from "../../config/summonSettings";
+import {
+  loadSummonSettings,
+  upsertSummonSettings,
+  type SummonModelInfo,
+  type SummonModelsCacheEntry,
+} from "../../config/summonSettings";
 import { FileCouncilStateStore } from "../../state/fileStateStore";
-import { CouncilServiceImpl } from "./index";
-import type { CouncilFeedback } from "./types";
+import { CouncilServiceImpl, updateParticipant } from "./index";
+import type { CouncilFeedback, CouncilRequest, CouncilState } from "./types";
 
-export const SUPPORTED_SUMMON_AGENTS = ["Claude"] as const;
+export const SUPPORTED_SUMMON_AGENTS = ["Claude", "Codex"] as const;
 export type SupportedSummonAgent = (typeof SUPPORTED_SUMMON_AGENTS)[number];
 
 export function isSupportedSummonAgent(value: string): value is SupportedSummonAgent {
@@ -35,18 +43,13 @@ export function resolveDefaultSummonAgent(
 export type SummonAgentInput = {
   agent: string;
   model?: string | null;
+  reasoningEffort?: string | null;
 };
 
 export type SummonAgentResult = {
   agent: string;
   model: string | null;
   feedback: CouncilFeedback;
-};
-
-export type SummonModelInfo = {
-  value: string;
-  displayName: string;
-  description: string;
 };
 
 type SummonResultMessage = {
@@ -57,19 +60,28 @@ type SummonResultMessage = {
   error?: string;
 };
 
+type JsonRpcResponse = {
+  id?: number;
+  result?: unknown;
+  error?: unknown;
+};
+
 const SUMMON_SERVER_NAME = "council";
 const SUMMON_TOOL_PREFIX = "mcp__council__";
 const READ_ONLY_TOOLS = new Set(["Read", "Glob", "Grep"]);
 const SUMMON_DEBUG_ENV = "AGENTS_COUNCIL_SUMMON_DEBUG";
 const CLAUDE_CODE_PATH_ENV = "CLAUDE_CODE_PATH";
-const MODEL_CACHE_TTL_MS = 5 * 60 * 1000;
+const CODEX_PATH_ENV = "CODEX_PATH";
+const MODEL_REFRESH_TIMEOUT_MS = 8000;
+const CODEX_CONFIG_PATH = path.join(os.homedir(), ".codex", "config.toml");
+const MODEL_REASONING_EFFORTS: ModelReasoningEffort[] = ["minimal", "low", "medium", "high", "xhigh"];
 
 function isAbsolutePath(p: string): boolean {
   // Unix absolute path or Windows absolute path (C:\... or \\...)
   return p.startsWith("/") || /^[a-zA-Z]:[\\/]/.test(p) || p.startsWith("\\\\");
 }
 
-async function resolveClaudePath(command: string): Promise<string> {
+async function resolveExecutablePath(command: string): Promise<string> {
   // If already an absolute path, return as-is
   if (isAbsolutePath(command)) {
     return command;
@@ -103,13 +115,26 @@ async function getClaudeCodeExecutablePath(): Promise<string> {
   // Priority: config > env var > default "claude"
   const settings = await loadSummonSettings();
   if (settings.claudeCodePath) {
-    return resolveClaudePath(settings.claudeCodePath);
+    return resolveExecutablePath(settings.claudeCodePath);
   }
   const envPath = process.env[CLAUDE_CODE_PATH_ENV]?.trim();
   if (envPath && envPath.length > 0) {
-    return resolveClaudePath(envPath);
+    return resolveExecutablePath(envPath);
   }
-  return resolveClaudePath("claude");
+  return resolveExecutablePath("claude");
+}
+
+async function getCodexExecutablePath(): Promise<string | null> {
+  // Priority: config > env var > default (bundled binary)
+  const settings = await loadSummonSettings();
+  if (settings.codexPath) {
+    return resolveExecutablePath(settings.codexPath);
+  }
+  const envPath = process.env[CODEX_PATH_ENV]?.trim();
+  if (envPath && envPath.length > 0) {
+    return resolveExecutablePath(envPath);
+  }
+  return null;
 }
 
 let cachedVersion: string | null = null;
@@ -138,9 +163,6 @@ export async function getClaudeCodeVersion(): Promise<string | null> {
   return null;
 }
 
-let cachedModels: SummonModelInfo[] | null = null;
-let cachedModelsAt = 0;
-
 function isSummonToolAllowed(toolName: string): boolean {
   if (toolName.startsWith(SUMMON_TOOL_PREFIX)) {
     return true;
@@ -153,12 +175,68 @@ function isSummonDebugEnabled(): boolean {
   return value === "1" || value === "true" || value === "yes";
 }
 
-export async function loadSupportedSummonModels(): Promise<SummonModelInfo[]> {
-  const now = Date.now();
-  if (cachedModels && now - cachedModelsAt < MODEL_CACHE_TTL_MS) {
-    return cachedModels;
+export async function loadCachedSummonModelsByAgent(
+  agents: readonly SupportedSummonAgent[] = SUPPORTED_SUMMON_AGENTS,
+): Promise<Record<string, SummonModelInfo[]>> {
+  const settings = await loadSummonSettings();
+  const cache = settings.summonModelsCache ?? {};
+  const updates: Record<string, SummonModelsCacheEntry> = {};
+  const results: Record<string, SummonModelInfo[]> = {};
+
+  for (const agent of agents) {
+    let models = cache[agent]?.models ?? [];
+    if (agent === "Codex" && models.length === 0) {
+      const fallback = await loadCodexFallbackModels();
+      if (fallback.length > 0) {
+        models = fallback;
+        if (!cache[agent]) {
+          updates[agent] = buildModelsCacheEntry(fallback);
+        }
+      }
+    }
+    results[agent] = models;
   }
 
+  if (Object.keys(updates).length > 0) {
+    await upsertSummonSettings({ summonModelsCache: updates });
+  }
+
+  return results;
+}
+
+export async function refreshSummonModelsByAgent(
+  agents: readonly SupportedSummonAgent[] = SUPPORTED_SUMMON_AGENTS,
+): Promise<Record<string, SummonModelInfo[]>> {
+  const updates: Record<string, SummonModelsCacheEntry> = {};
+
+  for (const agent of agents) {
+    const models = agent === "Codex" ? await fetchCodexModelsViaAppServer() : await fetchClaudeSupportedModels();
+    if (models.length > 0) {
+      updates[agent] = buildModelsCacheEntry(models);
+    }
+  }
+
+  if (Object.keys(updates).length > 0) {
+    await upsertSummonSettings({ summonModelsCache: updates });
+  }
+
+  return loadCachedSummonModelsByAgent(agents);
+}
+
+export function refreshSummonModelsInBackground(
+  agents: readonly SupportedSummonAgent[] = SUPPORTED_SUMMON_AGENTS,
+): void {
+  void refreshSummonModelsByAgent(agents).catch(() => {});
+}
+
+function buildModelsCacheEntry(models: SummonModelInfo[]): SummonModelsCacheEntry {
+  return {
+    models,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+async function fetchClaudeSupportedModels(): Promise<SummonModelInfo[]> {
   const claudeCodePath = await getClaudeCodeExecutablePath();
   const response = query({
     prompt: createPromptMessages("List supported Claude Code models."),
@@ -171,8 +249,8 @@ export async function loadSupportedSummonModels(): Promise<SummonModelInfo[]> {
   });
 
   try {
-    const models = await response.supportedModels();
-    const normalized = models
+    const models = await withTimeout(response.supportedModels(), MODEL_REFRESH_TIMEOUT_MS);
+    return models
       .filter((model): model is SummonModelInfo => Boolean(model && typeof model.value === "string"))
       .map((model) => ({
         value: model.value,
@@ -181,21 +259,216 @@ export async function loadSupportedSummonModels(): Promise<SummonModelInfo[]> {
             ? model.displayName
             : model.value,
         description: typeof model.description === "string" ? model.description : "",
+        supportedReasoningEfforts: [],
+        defaultReasoningEffort: "",
       }))
       .filter((model) => model.value.trim().length > 0);
-
-    if (normalized.length > 0) {
-      cachedModels = normalized;
-      cachedModelsAt = now;
-    }
-
-    return normalized;
   } catch {
     return [];
   } finally {
     // Fire-and-forget interrupt - don't await as it may hang
     response.interrupt().catch(() => {});
   }
+}
+
+async function fetchCodexModelsViaAppServer(): Promise<SummonModelInfo[]> {
+  const codexPath = await getCodexExecutablePath();
+  const command = codexPath ?? "codex";
+  let proc: Bun.Subprocess | null = null;
+  let writer: WritableStreamDefaultWriter<Uint8Array> | null = null;
+  let writeLine: ((line: string) => void) | null = null;
+
+  try {
+    proc = Bun.spawn([command, "app-server"], {
+      stdin: "pipe",
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+
+    if (!proc.stdin || !proc.stdout) {
+      throw new Error("Codex app-server missing stdio.");
+    }
+
+    const stdout = proc.stdout;
+    if (!isReadableStream(stdout)) {
+      throw new Error("Codex app-server stdout is not readable.");
+    }
+
+    if (isFileSink(proc.stdin)) {
+      writeLine = (line) => {
+        proc?.stdin && (proc.stdin as Bun.FileSink).write(line);
+      };
+    } else if (isWritableStream(proc.stdin)) {
+      writer = proc.stdin.getWriter();
+      const encoder = new TextEncoder();
+      writeLine = (line) => {
+        void writer?.write(encoder.encode(line));
+      };
+    } else {
+      throw new Error("Codex app-server stdin is not writable.");
+    }
+    const pending = new Map<number, (value: JsonRpcResponse) => void>();
+    let nextId = 1;
+
+    void (async () => {
+      for await (const line of readLines(stdout)) {
+        if (!line.trim()) {
+          continue;
+        }
+        let payload: JsonRpcResponse | null = null;
+        try {
+          payload = JSON.parse(line) as JsonRpcResponse;
+        } catch {
+          continue;
+        }
+        const id = typeof payload.id === "number" ? payload.id : null;
+        if (id !== null) {
+          const resolve = pending.get(id);
+          if (resolve) {
+            pending.delete(id);
+            resolve(payload);
+          }
+        }
+      }
+    })();
+
+    proc.exited.then(() => {
+      for (const resolve of pending.values()) {
+        resolve({} as JsonRpcResponse);
+      }
+      pending.clear();
+    });
+
+    const sendRequest = async (method: string, params: Record<string, unknown>): Promise<JsonRpcResponse> => {
+      const id = nextId++;
+      const payload = { jsonrpc: "2.0", id, method, params };
+      writeLine?.(`${JSON.stringify(payload)}\n`);
+      return new Promise((resolve) => {
+        pending.set(id, resolve);
+      });
+    };
+
+    const sendNotification = (method: string, params: Record<string, unknown> | null) => {
+      const payload = { jsonrpc: "2.0", method, params: params ?? {} };
+      writeLine?.(`${JSON.stringify(payload)}\n`);
+    };
+
+    await withTimeout(
+      sendRequest("initialize", {
+        clientInfo: { name: "agents-council", title: "Agents Council", version: "0.1.0" },
+      }),
+      MODEL_REFRESH_TIMEOUT_MS,
+    );
+    sendNotification("initialized", {});
+
+    const response = await withTimeout(sendRequest("model/list", {}), MODEL_REFRESH_TIMEOUT_MS);
+    const rawResult = (response.result ?? response) as { data?: unknown } | unknown;
+    const rawModels = isRecord(rawResult) ? ((rawResult as { data?: unknown }).data ?? rawResult) : rawResult;
+    if (!Array.isArray(rawModels)) {
+      return [];
+    }
+
+    return rawModels
+      .map((item: unknown) => normalizeModelInfoFromAny(item))
+      .filter((model): model is SummonModelInfo => model !== null);
+  } catch {
+    return [];
+  } finally {
+    try {
+      writer?.releaseLock();
+    } catch {
+      // ignore
+    }
+    try {
+      proc?.kill();
+    } catch {
+      // ignore
+    }
+  }
+}
+
+async function loadCodexDefaultModel(): Promise<string | null> {
+  try {
+    const config = await readFile(CODEX_CONFIG_PATH, "utf8");
+    return parseCodexModelFromConfig(config);
+  } catch {
+    return null;
+  }
+}
+
+async function loadCodexFallbackModels(): Promise<SummonModelInfo[]> {
+  const defaultModel = await loadCodexDefaultModel();
+  if (!defaultModel) {
+    return [];
+  }
+
+  return [
+    {
+      value: defaultModel,
+      displayName: defaultModel,
+      description: "",
+      supportedReasoningEfforts: [],
+      defaultReasoningEffort: "",
+    },
+  ];
+}
+
+function parseCodexModelFromConfig(config: string): string | null {
+  try {
+    const parsed = Bun.TOML.parse(config);
+    if (parsed && typeof parsed === "object" && "model" in parsed) {
+      const value = (parsed as Record<string, unknown>).model;
+      if (typeof value === "string") {
+        const trimmed = value.trim();
+        return trimmed.length > 0 ? trimmed : null;
+      }
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+function getCurrentRequestFromState(state: CouncilState): CouncilRequest | null {
+  const currentId = state.session?.currentRequestId;
+  if (!currentId) {
+    return null;
+  }
+  return state.requests.find((request) => request.id === currentId) ?? null;
+}
+
+async function markParticipantPending(store: FileCouncilStateStore, agent: string, requestId: string): Promise<void> {
+  const now = new Date().toISOString();
+  await store.update((state) => {
+    if (!state.session || state.session.status !== "active") {
+      return { state, result: undefined };
+    }
+    const { participants } = updateParticipant(state.participants, agent, now, (candidate) => ({
+      ...candidate,
+      lastSeen: now,
+      lastRequestSeen: requestId,
+    }));
+    return {
+      state: {
+        ...state,
+        participants,
+      },
+      result: undefined,
+    };
+  });
+}
+
+export async function summonAgent(input: SummonAgentInput): Promise<SummonAgentResult> {
+  const agent = normalizeRequiredString(input.agent, "agent");
+  if (!isSupportedSummonAgent(agent)) {
+    throw new Error("Unsupported agent.");
+  }
+
+  if (agent === "Codex") {
+    return summonCodexAgent({ ...input, agent });
+  }
+
+  return summonClaudeAgent({ ...input, agent });
 }
 
 export async function summonClaudeAgent(input: SummonAgentInput): Promise<SummonAgentResult> {
@@ -223,22 +496,26 @@ export async function summonClaudeAgent(input: SummonAgentInput): Promise<Summon
     event: "summon_session",
     data: { sessionId: session.id, requestId: session.currentRequestId },
   });
+  await markParticipantPending(store, agent, session.currentRequestId);
 
   const settings = await loadSummonSettings();
-  const savedAgent = settings.agents[agent] ?? { model: null };
+  const savedAgent = settings.agents[agent] ?? { model: null, reasoningEffort: null };
   const model = input.model === undefined ? savedAgent.model : normalizeOptionalString(input.model);
+  const reasoningEffort =
+    input.reasoningEffort === undefined ? savedAgent.reasoningEffort : normalizeOptionalString(input.reasoningEffort);
 
   await upsertSummonSettings({
     lastUsedAgent: agent,
     agents: {
       [agent]: {
         model,
+        reasoningEffort,
       },
     },
   });
   await appendSummonLog({
     event: "summon_settings",
-    data: { agent, model },
+    data: { agent, model, reasoningEffort },
   });
 
   const service = new CouncilServiceImpl(store);
@@ -249,7 +526,7 @@ export async function summonClaudeAgent(input: SummonAgentInput): Promise<Summon
     tools: buildCouncilTools(service, agent),
   });
 
-  const prompt = buildSummonPrompt();
+  const prompt = buildClaudeSummonPrompt();
   const claudeCodePath = await getClaudeCodeExecutablePath();
 
   const response = query({
@@ -314,6 +591,100 @@ export async function summonClaudeAgent(input: SummonAgentInput): Promise<Summon
     agent,
     model,
     feedback,
+  };
+}
+
+export async function summonCodexAgent(input: SummonAgentInput): Promise<SummonAgentResult> {
+  const agent = normalizeRequiredString(input.agent, "agent");
+  await appendSummonLog({
+    event: "summon_start",
+    data: {
+      agent,
+      model: input.model ?? null,
+      runner: "codex",
+      cwd: process.cwd(),
+    },
+  });
+
+  const store = new FileCouncilStateStore();
+  const state = await store.load();
+  const session = state.session;
+  if (!session || session.status !== "active") {
+    await appendSummonLog({ event: "summon_error", data: { message: "No active council session." } });
+    throw new Error("No active council session.");
+  }
+  const request = getCurrentRequestFromState(state);
+  if (!request) {
+    await appendSummonLog({ event: "summon_error", data: { message: "No active request." } });
+    throw new Error("No active request.");
+  }
+  await appendSummonLog({
+    event: "summon_session",
+    data: { sessionId: session.id, requestId: request.id },
+  });
+  await markParticipantPending(store, agent, request.id);
+
+  const settings = await loadSummonSettings();
+  const savedAgent = settings.agents[agent] ?? { model: null, reasoningEffort: null };
+  const model = input.model === undefined ? savedAgent.model : normalizeOptionalString(input.model);
+  const reasoningEffort =
+    input.reasoningEffort === undefined ? savedAgent.reasoningEffort : normalizeOptionalString(input.reasoningEffort);
+
+  await upsertSummonSettings({
+    lastUsedAgent: agent,
+    agents: {
+      [agent]: {
+        model,
+        reasoningEffort,
+      },
+    },
+  });
+  await appendSummonLog({
+    event: "summon_settings",
+    data: { agent, model, reasoningEffort },
+  });
+
+  const requestFeedback = state.feedback.filter((entry) => entry.requestId === request.id);
+  const prompt = buildCodexSummonPrompt(request, requestFeedback);
+  const codexPath = await getCodexExecutablePath();
+  const codex = codexPath ? new Codex({ codexPathOverride: codexPath }) : new Codex();
+  const thread = codex.startThread({
+    model: model ?? undefined,
+    modelReasoningEffort: normalizeModelReasoningEffort(reasoningEffort),
+    sandboxMode: "read-only",
+    workingDirectory: process.cwd(),
+    skipGitRepoCheck: true,
+    approvalPolicy: "never",
+    networkAccessEnabled: false,
+    webSearchEnabled: false,
+  });
+
+  let responseText: string | null = null;
+  try {
+    const turn = await thread.run(prompt);
+    responseText = normalizeOptionalString(turn.finalResponse);
+  } catch (error) {
+    const message = getErrorMessage(error);
+    await appendSummonLog({ event: "summon_error", data: { message } });
+    throw new Error(message);
+  }
+
+  if (!responseText) {
+    await appendSummonLog({ event: "summon_error", data: { message: "Codex did not return a response." } });
+    throw new Error("Codex did not return a response.");
+  }
+
+  const service = new CouncilServiceImpl(store);
+  const result = await service.sendResponse({ agentName: agent, content: responseText });
+  await appendSummonLog({
+    event: "summon_success",
+    data: { feedbackId: result.feedback.id, feedbackAuthor: result.feedback.author },
+  });
+
+  return {
+    agent,
+    model,
+    feedback: result.feedback,
   };
 }
 
@@ -392,7 +763,7 @@ function toolError(error: unknown): CallToolResult {
   };
 }
 
-function buildSummonPrompt(): string {
+function buildClaudeSummonPrompt(): string {
   const lines = [
     "You are a Claude agent summoned to the Agents Council.",
     "Use the council tools to join the active session, review the request and prior feedback, then send a single response.",
@@ -403,6 +774,29 @@ function buildSummonPrompt(): string {
     "3) Call mcp__council__send_response with your advice.",
   ];
 
+  return lines.join("\n");
+}
+
+function buildCodexSummonPrompt(request: CouncilRequest, feedback: CouncilFeedback[]): string {
+  const lines = [
+    "You are a Codex agent summoned to the Agents Council.",
+    "Review the council request and prior feedback, then provide a single response.",
+    "",
+    `Council request (from ${request.createdBy}):`,
+    request.content,
+    "",
+    "Prior responses:",
+  ];
+
+  if (feedback.length === 0) {
+    lines.push("None yet.");
+  } else {
+    feedback.forEach((entry) => {
+      lines.push(`- ${entry.author}: ${entry.content}`);
+    });
+  }
+
+  lines.push("", "Reply with your advice only. Do not run commands or call tools.");
   return lines.join("\n");
 }
 
@@ -453,12 +847,114 @@ function normalizeRequiredString(value: string, label: string): string {
   return normalized;
 }
 
-function normalizeOptionalString(value: string | null | undefined): string | null {
+function normalizeOptionalString(value: unknown): string | null {
   if (typeof value !== "string") {
     return null;
   }
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
+}
+
+function normalizeModelReasoningEffort(value: string | null): ModelReasoningEffort | undefined {
+  if (!value) {
+    return undefined;
+  }
+  return MODEL_REASONING_EFFORTS.includes(value as ModelReasoningEffort) ? (value as ModelReasoningEffort) : undefined;
+}
+
+function normalizeModelInfoFromAny(input: unknown): SummonModelInfo | null {
+  if (!isRecord(input)) {
+    return null;
+  }
+  const value = normalizeOptionalString(input.model ?? input.id ?? input.value);
+  if (!value) {
+    return null;
+  }
+  const displayName =
+    normalizeOptionalString(input.displayName ?? input.display_name ?? input.model ?? input.id) ?? value;
+  const description = normalizeOptionalString(input.description) ?? "";
+  const supportedReasoningEfforts = Array.isArray(input.supportedReasoningEfforts)
+    ? normalizeReasoningEfforts(input.supportedReasoningEfforts)
+    : Array.isArray(input.supported_reasoning_efforts)
+      ? normalizeReasoningEfforts(input.supported_reasoning_efforts)
+      : [];
+  const defaultReasoningEffort =
+    normalizeOptionalString(input.defaultReasoningEffort ?? input.default_reasoning_effort) ?? "";
+
+  return {
+    value,
+    displayName,
+    description,
+    supportedReasoningEfforts,
+    defaultReasoningEffort,
+  };
+}
+
+function normalizeReasoningEfforts(input: unknown[]): { reasoningEffort: string; description: string }[] {
+  return input
+    .map((entry) => {
+      if (!isRecord(entry)) {
+        return null;
+      }
+      const reasoningEffort = normalizeOptionalString(entry.reasoningEffort ?? entry.reasoning_effort);
+      if (!reasoningEffort) {
+        return null;
+      }
+      return {
+        reasoningEffort,
+        description: normalizeOptionalString(entry.description) ?? "",
+      };
+    })
+    .filter((entry): entry is { reasoningEffort: string; description: string } => entry !== null);
+}
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      reject(new Error("Timed out."));
+    }, ms);
+    promise
+      .then((value) => {
+        clearTimeout(timeout);
+        resolve(value);
+      })
+      .catch((error) => {
+        clearTimeout(timeout);
+        reject(error);
+      });
+  });
+}
+
+async function* readLines(stream: ReadableStream<Uint8Array>): AsyncGenerator<string> {
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) {
+        break;
+      }
+      buffer += decoder.decode(value, { stream: true });
+      let index = buffer.indexOf("\n");
+      while (index !== -1) {
+        const line = buffer.slice(0, index);
+        buffer = buffer.slice(index + 1);
+        yield line;
+        index = buffer.indexOf("\n");
+      }
+    }
+    if (buffer.length > 0) {
+      yield buffer;
+    }
+  } finally {
+    try {
+      reader.releaseLock();
+    } catch {
+      // ignore
+    }
+  }
 }
 
 function resolveSummonResultError(resultMessage: SummonResultMessage | null): string | null {
@@ -479,5 +975,21 @@ function resolveSummonResultError(resultMessage: SummonResultMessage | null): st
 }
 
 function getErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : "Claude summon failed.";
+  return error instanceof Error ? error.message : "Summon failed.";
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isReadableStream(value: unknown): value is ReadableStream<Uint8Array> {
+  return Boolean(value && typeof (value as ReadableStream<Uint8Array>).getReader === "function");
+}
+
+function isWritableStream(value: unknown): value is WritableStream<Uint8Array> {
+  return Boolean(value && typeof (value as WritableStream<Uint8Array>).getWriter === "function");
+}
+
+function isFileSink(value: unknown): value is { write: (data: string) => void } {
+  return Boolean(value && typeof (value as { write?: unknown }).write === "function");
 }

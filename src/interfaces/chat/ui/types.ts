@@ -76,19 +76,22 @@ export type SendResponseResponse = {
 
 export type SummonAgentSettingsDto = {
   model: string | null;
+  reasoning_effort: string | null;
 };
 
 export type SummonModelInfoDto = {
   value: string;
   display_name: string;
   description: string;
+  supported_reasoning_efforts: { reasoning_effort: string; description: string }[];
+  default_reasoning_effort: string;
 };
 
 export type SummonSettingsResponse = {
   last_used_agent: string | null;
   agents: Record<string, SummonAgentSettingsDto>;
   supported_agents: string[];
-  supported_models: SummonModelInfoDto[];
+  supported_models_by_agent: Record<string, SummonModelInfoDto[]>;
   default_agent: string;
   claude_code_path: string | null;
   claude_code_version: string | null;
@@ -96,6 +99,7 @@ export type SummonSettingsResponse = {
 
 export type GlobalSettingsResponse = {
   claude_code_path: string | null;
+  codex_path: string | null;
 };
 
 export type SummonAgentResponse = {
