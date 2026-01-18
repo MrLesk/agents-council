@@ -1652,9 +1652,9 @@ body::before {
   left: 16px;
   top: 50%;
   transform: translateY(-50%);
-  width: 30px;
-  height: 30px;
-  font-size: 14px;
+  width: 36px;
+  height: 36px;
+  font-size: 16px;
   background: rgba(12, 9, 7, 0.7);
   border-color: rgba(210, 177, 119, 0.4);
 }
