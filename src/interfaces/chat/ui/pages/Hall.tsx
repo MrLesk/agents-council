@@ -37,12 +37,7 @@ function AgentBadge({ name }: { name: string }) {
 }
 
 function formatSummonModelLabel(model: SummonModelInfoDto): string {
-  const name = model.display_name.trim() || model.value;
-  const description = model.description.trim();
-  if (description.length > 0 && description !== name) {
-    return `${name} — ${description}`;
-  }
-  return name;
+  return model.display_name.trim() || model.value;
 }
 
 type HallProps = {
