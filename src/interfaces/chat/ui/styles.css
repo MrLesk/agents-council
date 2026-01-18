@@ -1644,6 +1644,11 @@ body::before {
   border-color: rgba(210, 177, 119, 0.4);
 }
 
+.dialog-header-action:hover,
+.dialog-header-action:active {
+  transform: translateY(-50%);
+}
+
 @keyframes fadeIn {
   from {
     opacity: 0;
