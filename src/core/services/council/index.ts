@@ -331,7 +331,7 @@ function nextAvailableAgentName(participants: CouncilParticipant[], requestedNam
   return `${requestedName}#${suffix}`;
 }
 
-function updateParticipant(
+export function updateParticipant(
   participants: CouncilParticipant[],
   agentName: string,
   now: string,

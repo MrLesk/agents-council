@@ -14,7 +14,7 @@ import {
   type SummonModelsCacheEntry,
 } from "../../config/summonSettings";
 import { FileCouncilStateStore } from "../../state/fileStateStore";
-import { CouncilServiceImpl } from "./index";
+import { CouncilServiceImpl, updateParticipant } from "./index";
 import type { CouncilFeedback, CouncilRequest, CouncilState } from "./types";
 
 export const SUPPORTED_SUMMON_AGENTS = ["Claude", "Codex"] as const;
@@ -437,6 +437,27 @@ function getCurrentRequestFromState(state: CouncilState): CouncilRequest | null 
   return state.requests.find((request) => request.id === currentId) ?? null;
 }
 
+async function markParticipantPending(store: FileCouncilStateStore, agent: string, requestId: string): Promise<void> {
+  const now = new Date().toISOString();
+  await store.update((state) => {
+    if (!state.session || state.session.status !== "active") {
+      return { state, result: undefined };
+    }
+    const { participants } = updateParticipant(state.participants, agent, now, (candidate) => ({
+      ...candidate,
+      lastSeen: now,
+      lastRequestSeen: requestId,
+    }));
+    return {
+      state: {
+        ...state,
+        participants,
+      },
+      result: undefined,
+    };
+  });
+}
+
 export async function summonAgent(input: SummonAgentInput): Promise<SummonAgentResult> {
   const agent = normalizeRequiredString(input.agent, "agent");
   if (!isSupportedSummonAgent(agent)) {
@@ -475,6 +496,7 @@ export async function summonClaudeAgent(input: SummonAgentInput): Promise<Summon
     event: "summon_session",
     data: { sessionId: session.id, requestId: session.currentRequestId },
   });
+  await markParticipantPending(store, agent, session.currentRequestId);
 
   const settings = await loadSummonSettings();
   const savedAgent = settings.agents[agent] ?? { model: null, reasoningEffort: null };
@@ -600,6 +622,7 @@ export async function summonCodexAgent(input: SummonAgentInput): Promise<SummonA
     event: "summon_session",
     data: { sessionId: session.id, requestId: request.id },
   });
+  await markParticipantPending(store, agent, request.id);
 
   const settings = await loadSummonSettings();
   const savedAgent = settings.agents[agent] ?? { model: null, reasoningEffort: null };
