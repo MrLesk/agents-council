@@ -7,7 +7,7 @@ import { loadSummonSettings } from "../../core/config/summonSettings";
 import { CouncilServiceImpl } from "../../core/services/council";
 import {
   SUPPORTED_SUMMON_AGENTS,
-  loadSupportedSummonModelsByAgent,
+  loadCachedSummonModelsByAgent,
   resolveDefaultSummonAgent,
   summonAgent,
 } from "../../core/services/council/summon";
@@ -91,7 +91,7 @@ export async function startMcpServer(options: { format?: ResponseFormat; agentNa
   responseFormat = format;
   const configuredAgentName = options.agentName?.trim() || null;
   agentName = configuredAgentName;
-  const supportedModelsByAgent = await loadSupportedSummonModelsByAgent();
+  const supportedModelsByAgent = await loadCachedSummonModelsByAgent();
   registerTools({ hasDefaultAgentName: configuredAgentName !== null, supportedModelsByAgent });
   const transport = new StdioServerTransport();
   await server.connect(transport);
@@ -154,6 +154,11 @@ function registerTools(options: {
       }
       const models = options.supportedModelsByAgent[data.agent] ?? [];
       if (models.length === 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["model"],
+          message: "Model override is unavailable without a cached model list.",
+        });
         return;
       }
       if (!models.some((model) => model.value === data.model)) {

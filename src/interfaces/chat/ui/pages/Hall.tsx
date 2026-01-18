@@ -2,7 +2,7 @@ import { type ChangeEvent, useCallback, useEffect, useRef, useState } from "reac
 import MarkdownPreview, { type MarkdownPreviewProps } from "@uiw/react-markdown-preview";
 
 import { Settings } from "../components/Settings";
-import { getSummonSettings, summonAgent, updateSummonSettings } from "../api";
+import { getSummonSettings, refreshSummonModels, summonAgent, updateSummonSettings } from "../api";
 import type { CouncilContext } from "../hooks/useCouncil";
 import type { SummonSettingsResponse } from "../types";
 
@@ -67,6 +67,7 @@ export function Hall({ name, council, onNameChange }: HallProps) {
   const [summonAgentName, setSummonAgentName] = useState("");
   const [summonModel, setSummonModel] = useState("");
   const [summonBusy, setSummonBusy] = useState(false);
+  const [refreshingModels, setRefreshingModels] = useState(false);
   const [summonError, setSummonError] = useState<string | null>(null);
   const [summonNotice, setSummonNotice] = useState<string | null>(null);
   const [summonFailure, setSummonFailure] = useState<{ agent: string; message: string } | null>(null);
@@ -103,6 +104,9 @@ export function Hall({ name, council, onNameChange }: HallProps) {
   const summonModels = summonSettings?.supported_models_by_agent[summonAgentName] ?? [];
   const hasSummonModels = summonModels.length > 0;
   const isCodexAgent = summonAgentName === "Codex";
+  const allowModelOverride = hasSummonModels;
+  const showDefaultOption = isCodexAgent || !hasSummonModels;
+  const selectModelValue = allowModelOverride ? summonModel : "";
   const missingSummonModel =
     summonModel.trim().length > 0 ? !summonModels.some((model) => model.value === summonModel) : false;
 
@@ -252,11 +256,17 @@ export function Hall({ name, council, onNameChange }: HallProps) {
       return;
     }
 
-    const model = summonModel.trim();
-    const payload = {
+    const model = allowModelOverride ? summonModel.trim() : "";
+    const summonPayload = {
       agent: summonAgentName,
       model: model.length > 0 ? model : null,
     };
+    const settingsPayload: { agent: string; model?: string | null } = {
+      agent: summonAgentName,
+    };
+    if (allowModelOverride) {
+      settingsPayload.model = model.length > 0 ? model : null;
+    }
 
     // Show brief loading state on button
     setSummonBusy(true);
@@ -266,7 +276,7 @@ export function Hall({ name, council, onNameChange }: HallProps) {
 
     try {
       // Save settings first
-      const updatedSettings = await updateSummonSettings(payload);
+      const updatedSettings = await updateSummonSettings(settingsPayload);
       setSummonSettings(updatedSettings);
 
       // Show loading animation for 200ms before closing modal
@@ -276,13 +286,33 @@ export function Hall({ name, council, onNameChange }: HallProps) {
       setShowSummonAgent(false);
 
       // Run summon in background
-      await summonAgent(payload);
+      await summonAgent(summonPayload);
     } catch (err) {
       // Show error inline in the messages area
       const message = err instanceof Error ? err.message : "Unable to summon agent.";
       setSummonFailure({ agent: summonAgentName, message });
     } finally {
       setSummonBusy(false);
+    }
+  };
+
+  const handleRefreshModels = async () => {
+    if (refreshingModels) {
+      return;
+    }
+    setRefreshingModels(true);
+    setSummonError(null);
+    setSummonNotice("Refreshing models...");
+    try {
+      const updatedSettings = await refreshSummonModels();
+      setSummonSettings(updatedSettings);
+      applySummonDefaults(updatedSettings, summonAgentName);
+      setSummonNotice("Models refreshed.");
+    } catch (err) {
+      setSummonError(err instanceof Error ? err.message : "Failed to refresh models.");
+      setSummonNotice(null);
+    } finally {
+      setRefreshingModels(false);
     }
   };
 
@@ -676,9 +706,21 @@ export function Hall({ name, council, onNameChange }: HallProps) {
                     })}
                   </select>
                 </div>
-                <label className="label" htmlFor="summon-model">
-                  Model
-                </label>
+                <div className="label-row">
+                  <label className="label" htmlFor="summon-model">
+                    Model
+                  </label>
+                  <button
+                    type="button"
+                    className="btn-icon"
+                    onClick={handleRefreshModels}
+                    title="Refresh models"
+                    aria-label="Refresh models"
+                    disabled={summonBusy || refreshingModels}
+                  >
+                    ⟳
+                  </button>
+                </div>
                 {missingSummonModel ? <div className="select-hint">Saved model isn't in the current list.</div> : null}
                 {!hasSummonModels ? (
                   <div className="select-hint">No known models for this agent. Default settings will be used.</div>
@@ -687,12 +729,16 @@ export function Hall({ name, council, onNameChange }: HallProps) {
                   <select
                     id="summon-model"
                     className="select"
-                    value={summonModel}
+                    value={selectModelValue}
                     onChange={(event) => setSummonModel(event.target.value)}
                     disabled={summonBusy}
                   >
-                    {isCodexAgent ? <option value="">Default</option> : null}
-                    {missingSummonModel ? <option value={summonModel}>{`Saved: ${summonModel}`}</option> : null}
+                    {showDefaultOption ? <option value="">Default</option> : null}
+                    {missingSummonModel ? (
+                      <option value={summonModel} disabled={!allowModelOverride}>
+                        {`Saved: ${summonModel}`}
+                      </option>
+                    ) : null}
                     {summonModels.map((model) => (
                       <option key={model.value} value={model.value}>
                         {model.description || model.display_name}

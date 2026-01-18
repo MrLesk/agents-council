@@ -6,7 +6,9 @@ import { CouncilServiceImpl } from "../../core/services/council";
 import {
   SUPPORTED_SUMMON_AGENTS,
   getClaudeCodeVersion,
-  loadSupportedSummonModelsByAgent,
+  loadCachedSummonModelsByAgent,
+  refreshSummonModelsByAgent,
+  refreshSummonModelsInBackground,
   isSupportedSummonAgent,
   resolveDefaultSummonAgent,
   summonAgent,
@@ -111,6 +113,8 @@ export function startChatServer(options: ChatServerOptions): ChatServer {
                 return await handleCloseCouncil(req);
               case "/get-summon-settings":
                 return await handleGetSummonSettings();
+              case "/refresh-summon-models":
+                return await handleRefreshSummonModels();
               case "/update-summon-settings":
                 return await handleUpdateSummonSettings(req);
               case "/summon-agent":
@@ -233,9 +237,19 @@ async function handleCloseCouncil(req: Request): Promise<Response> {
 async function handleGetSummonSettings(): Promise<Response> {
   const [settings, supportedModelsByAgent, version] = await Promise.all([
     loadSummonSettings(),
-    loadSupportedSummonModelsByAgent(),
+    loadCachedSummonModelsByAgent(),
     getClaudeCodeVersion(),
   ]);
+  if (Object.values(supportedModelsByAgent).some((models) => models.length === 0)) {
+    refreshSummonModelsInBackground();
+  }
+  const supportedModelDtosByAgent = mapSupportedModelsByAgent(supportedModelsByAgent);
+  return Response.json(mapSummonSettings(settings, supportedModelDtosByAgent, version));
+}
+
+async function handleRefreshSummonModels(): Promise<Response> {
+  const supportedModelsByAgent = await refreshSummonModelsByAgent();
+  const [settings, version] = await Promise.all([loadSummonSettings(), getClaudeCodeVersion()]);
   const supportedModelDtosByAgent = mapSupportedModelsByAgent(supportedModelsByAgent);
   return Response.json(mapSummonSettings(settings, supportedModelDtosByAgent, version));
 }
@@ -265,7 +279,7 @@ async function handleUpdateSummonSettings(req: Request): Promise<Response> {
 
   const updated = await upsertSummonSettings(update);
   const [supportedModelsByAgent, version] = await Promise.all([
-    loadSupportedSummonModelsByAgent(),
+    loadCachedSummonModelsByAgent(),
     getClaudeCodeVersion(),
   ]);
   const supportedModelDtosByAgent = mapSupportedModelsByAgent(supportedModelsByAgent);

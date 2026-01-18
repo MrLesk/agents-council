@@ -70,6 +70,10 @@ export async function getSummonSettings(): Promise<SummonSettingsResponse> {
   return postJson<SummonSettingsResponse>("/get-summon-settings", {});
 }
 
+export async function refreshSummonModels(): Promise<SummonSettingsResponse> {
+  return postJson<SummonSettingsResponse>("/refresh-summon-models", {});
+}
+
 export async function updateSummonSettings(payload: {
   agent: string;
   model?: string | null;

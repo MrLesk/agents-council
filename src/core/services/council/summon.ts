@@ -6,7 +6,12 @@ import os from "node:os";
 import path from "node:path";
 import { z } from "zod";
 
-import { loadSummonSettings, upsertSummonSettings } from "../../config/summonSettings";
+import {
+  loadSummonSettings,
+  upsertSummonSettings,
+  type SummonModelInfo,
+  type SummonModelsCacheEntry,
+} from "../../config/summonSettings";
 import { FileCouncilStateStore } from "../../state/fileStateStore";
 import { CouncilServiceImpl } from "./index";
 import type { CouncilFeedback, CouncilRequest, CouncilState } from "./types";
@@ -45,12 +50,6 @@ export type SummonAgentResult = {
   feedback: CouncilFeedback;
 };
 
-export type SummonModelInfo = {
-  value: string;
-  displayName: string;
-  description: string;
-};
-
 type SummonResultMessage = {
   subtype?: string;
   errors?: string[];
@@ -59,13 +58,19 @@ type SummonResultMessage = {
   error?: string;
 };
 
+type JsonRpcResponse = {
+  id?: number;
+  result?: unknown;
+  error?: unknown;
+};
+
 const SUMMON_SERVER_NAME = "council";
 const SUMMON_TOOL_PREFIX = "mcp__council__";
 const READ_ONLY_TOOLS = new Set(["Read", "Glob", "Grep"]);
 const SUMMON_DEBUG_ENV = "AGENTS_COUNCIL_SUMMON_DEBUG";
 const CLAUDE_CODE_PATH_ENV = "CLAUDE_CODE_PATH";
 const CODEX_PATH_ENV = "CODEX_PATH";
-const MODEL_CACHE_TTL_MS = 5 * 60 * 1000;
+const MODEL_REFRESH_TIMEOUT_MS = 8000;
 const CODEX_CONFIG_PATH = path.join(os.homedir(), ".codex", "config.toml");
 
 function isAbsolutePath(p: string): boolean {
@@ -155,11 +160,6 @@ export async function getClaudeCodeVersion(): Promise<string | null> {
   return null;
 }
 
-let cachedClaudeModels: SummonModelInfo[] | null = null;
-let cachedClaudeModelsAt = 0;
-let cachedCodexModels: SummonModelInfo[] | null = null;
-let cachedCodexModelsAt = 0;
-
 function isSummonToolAllowed(toolName: string): boolean {
   if (toolName.startsWith(SUMMON_TOOL_PREFIX)) {
     return true;
@@ -172,28 +172,68 @@ function isSummonDebugEnabled(): boolean {
   return value === "1" || value === "true" || value === "yes";
 }
 
-export async function loadSupportedSummonModels(agent: SupportedSummonAgent): Promise<SummonModelInfo[]> {
-  if (agent === "Codex") {
-    return loadCodexSupportedModels();
-  }
-  return loadClaudeSupportedModels();
-}
-
-export async function loadSupportedSummonModelsByAgent(
+export async function loadCachedSummonModelsByAgent(
   agents: readonly SupportedSummonAgent[] = SUPPORTED_SUMMON_AGENTS,
 ): Promise<Record<string, SummonModelInfo[]>> {
-  const entries = await Promise.all(
-    agents.map(async (agent) => [agent, await loadSupportedSummonModels(agent)] as const),
-  );
-  return Object.fromEntries(entries);
-}
+  const settings = await loadSummonSettings();
+  const cache = settings.summonModelsCache ?? {};
+  const updates: Record<string, SummonModelsCacheEntry> = {};
+  const results: Record<string, SummonModelInfo[]> = {};
 
-async function loadClaudeSupportedModels(): Promise<SummonModelInfo[]> {
-  const now = Date.now();
-  if (cachedClaudeModels !== null && now - cachedClaudeModelsAt < MODEL_CACHE_TTL_MS) {
-    return cachedClaudeModels;
+  for (const agent of agents) {
+    let models = cache[agent]?.models ?? [];
+    if (agent === "Codex" && models.length === 0) {
+      const fallback = await loadCodexFallbackModels();
+      if (fallback.length > 0) {
+        models = fallback;
+        if (!cache[agent]) {
+          updates[agent] = buildModelsCacheEntry(fallback);
+        }
+      }
+    }
+    results[agent] = models;
   }
 
+  if (Object.keys(updates).length > 0) {
+    await upsertSummonSettings({ summonModelsCache: updates });
+  }
+
+  return results;
+}
+
+export async function refreshSummonModelsByAgent(
+  agents: readonly SupportedSummonAgent[] = SUPPORTED_SUMMON_AGENTS,
+): Promise<Record<string, SummonModelInfo[]>> {
+  const updates: Record<string, SummonModelsCacheEntry> = {};
+
+  for (const agent of agents) {
+    const models = agent === "Codex" ? await fetchCodexModelsViaAppServer() : await fetchClaudeSupportedModels();
+    if (models.length > 0) {
+      updates[agent] = buildModelsCacheEntry(models);
+    }
+  }
+
+  if (Object.keys(updates).length > 0) {
+    await upsertSummonSettings({ summonModelsCache: updates });
+  }
+
+  return loadCachedSummonModelsByAgent(agents);
+}
+
+export function refreshSummonModelsInBackground(
+  agents: readonly SupportedSummonAgent[] = SUPPORTED_SUMMON_AGENTS,
+): void {
+  void refreshSummonModelsByAgent(agents).catch(() => {});
+}
+
+function buildModelsCacheEntry(models: SummonModelInfo[]): SummonModelsCacheEntry {
+  return {
+    models,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+async function fetchClaudeSupportedModels(): Promise<SummonModelInfo[]> {
   const claudeCodePath = await getClaudeCodeExecutablePath();
   const response = query({
     prompt: createPromptMessages("List supported Claude Code models."),
@@ -206,8 +246,8 @@ async function loadClaudeSupportedModels(): Promise<SummonModelInfo[]> {
   });
 
   try {
-    const models = await response.supportedModels();
-    const normalized = models
+    const models = await withTimeout(response.supportedModels(), MODEL_REFRESH_TIMEOUT_MS);
+    return models
       .filter((model): model is SummonModelInfo => Boolean(model && typeof model.value === "string"))
       .map((model) => ({
         value: model.value,
@@ -218,13 +258,7 @@ async function loadClaudeSupportedModels(): Promise<SummonModelInfo[]> {
         description: typeof model.description === "string" ? model.description : "",
       }))
       .filter((model) => model.value.trim().length > 0);
-
-    cachedClaudeModels = normalized;
-    cachedClaudeModelsAt = now;
-    return normalized;
   } catch {
-    cachedClaudeModels = [];
-    cachedClaudeModelsAt = now;
     return [];
   } finally {
     // Fire-and-forget interrupt - don't await as it may hang
@@ -232,26 +266,120 @@ async function loadClaudeSupportedModels(): Promise<SummonModelInfo[]> {
   }
 }
 
-async function loadCodexSupportedModels(): Promise<SummonModelInfo[]> {
-  const now = Date.now();
-  if (cachedCodexModels !== null && now - cachedCodexModelsAt < MODEL_CACHE_TTL_MS) {
-    return cachedCodexModels;
+async function fetchCodexModelsViaAppServer(): Promise<SummonModelInfo[]> {
+  const codexPath = await getCodexExecutablePath();
+  const command = codexPath ?? "codex";
+  let proc: Bun.Subprocess | null = null;
+  let writer: WritableStreamDefaultWriter<Uint8Array> | null = null;
+  let writeLine: ((line: string) => void) | null = null;
+
+  try {
+    proc = Bun.spawn([command, "app-server"], {
+      stdin: "pipe",
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+
+    if (!proc.stdin || !proc.stdout) {
+      throw new Error("Codex app-server missing stdio.");
+    }
+
+    const stdout = proc.stdout;
+    if (!isReadableStream(stdout)) {
+      throw new Error("Codex app-server stdout is not readable.");
+    }
+
+    if (isFileSink(proc.stdin)) {
+      writeLine = (line) => {
+        proc?.stdin && (proc.stdin as Bun.FileSink).write(line);
+      };
+    } else if (isWritableStream(proc.stdin)) {
+      writer = proc.stdin.getWriter();
+      const encoder = new TextEncoder();
+      writeLine = (line) => {
+        void writer?.write(encoder.encode(line));
+      };
+    } else {
+      throw new Error("Codex app-server stdin is not writable.");
+    }
+    const pending = new Map<number, (value: JsonRpcResponse) => void>();
+    let nextId = 1;
+
+    void (async () => {
+      for await (const line of readLines(stdout)) {
+        if (!line.trim()) {
+          continue;
+        }
+        let payload: JsonRpcResponse | null = null;
+        try {
+          payload = JSON.parse(line) as JsonRpcResponse;
+        } catch {
+          continue;
+        }
+        const id = typeof payload.id === "number" ? payload.id : null;
+        if (id !== null) {
+          const resolve = pending.get(id);
+          if (resolve) {
+            pending.delete(id);
+            resolve(payload);
+          }
+        }
+      }
+    })();
+
+    proc.exited.then(() => {
+      for (const resolve of pending.values()) {
+        resolve({} as JsonRpcResponse);
+      }
+      pending.clear();
+    });
+
+    const sendRequest = async (method: string, params: Record<string, unknown>): Promise<JsonRpcResponse> => {
+      const id = nextId++;
+      const payload = { jsonrpc: "2.0", id, method, params };
+      writeLine?.(`${JSON.stringify(payload)}\n`);
+      return new Promise((resolve) => {
+        pending.set(id, resolve);
+      });
+    };
+
+    const sendNotification = (method: string, params: Record<string, unknown> | null) => {
+      const payload = { jsonrpc: "2.0", method, params: params ?? {} };
+      writeLine?.(`${JSON.stringify(payload)}\n`);
+    };
+
+    await withTimeout(
+      sendRequest("initialize", {
+        clientInfo: { name: "agents-council", title: "Agents Council", version: "0.1.0" },
+      }),
+      MODEL_REFRESH_TIMEOUT_MS,
+    );
+    sendNotification("initialized", {});
+
+    const response = await withTimeout(sendRequest("model/list", {}), MODEL_REFRESH_TIMEOUT_MS);
+    const rawResult = (response.result ?? response) as { data?: unknown } | unknown;
+    const rawModels = isRecord(rawResult) ? ((rawResult as { data?: unknown }).data ?? rawResult) : rawResult;
+    if (!Array.isArray(rawModels)) {
+      return [];
+    }
+
+    return rawModels
+      .map((item: unknown) => normalizeModelInfoFromAny(item))
+      .filter((model): model is SummonModelInfo => model !== null);
+  } catch {
+    return [];
+  } finally {
+    try {
+      writer?.releaseLock();
+    } catch {
+      // ignore
+    }
+    try {
+      proc?.kill();
+    } catch {
+      // ignore
+    }
   }
-
-  const defaultModel = await loadCodexDefaultModel();
-  const models = defaultModel
-    ? [
-        {
-          value: defaultModel,
-          displayName: defaultModel,
-          description: "",
-        },
-      ]
-    : [];
-
-  cachedCodexModels = models;
-  cachedCodexModelsAt = now;
-  return models;
 }
 
 async function loadCodexDefaultModel(): Promise<string | null> {
@@ -261,6 +389,21 @@ async function loadCodexDefaultModel(): Promise<string | null> {
   } catch {
     return null;
   }
+}
+
+async function loadCodexFallbackModels(): Promise<SummonModelInfo[]> {
+  const defaultModel = await loadCodexDefaultModel();
+  if (!defaultModel) {
+    return [];
+  }
+
+  return [
+    {
+      value: defaultModel,
+      displayName: defaultModel,
+      description: "",
+    },
+  ];
 }
 
 function parseCodexModelFromConfig(config: string): string | null {
@@ -667,12 +810,80 @@ function normalizeRequiredString(value: string, label: string): string {
   return normalized;
 }
 
-function normalizeOptionalString(value: string | null | undefined): string | null {
+function normalizeOptionalString(value: unknown): string | null {
   if (typeof value !== "string") {
     return null;
   }
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
+}
+
+function normalizeModelInfoFromAny(input: unknown): SummonModelInfo | null {
+  if (!isRecord(input)) {
+    return null;
+  }
+  const value = normalizeOptionalString(input.model ?? input.id ?? input.value);
+  if (!value) {
+    return null;
+  }
+  const displayName =
+    normalizeOptionalString(input.displayName ?? input.display_name ?? input.model ?? input.id) ?? value;
+  const description = normalizeOptionalString(input.description) ?? "";
+
+  return {
+    value,
+    displayName,
+    description,
+  };
+}
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      reject(new Error("Timed out."));
+    }, ms);
+    promise
+      .then((value) => {
+        clearTimeout(timeout);
+        resolve(value);
+      })
+      .catch((error) => {
+        clearTimeout(timeout);
+        reject(error);
+      });
+  });
+}
+
+async function* readLines(stream: ReadableStream<Uint8Array>): AsyncGenerator<string> {
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) {
+        break;
+      }
+      buffer += decoder.decode(value, { stream: true });
+      let index = buffer.indexOf("\n");
+      while (index !== -1) {
+        const line = buffer.slice(0, index);
+        buffer = buffer.slice(index + 1);
+        yield line;
+        index = buffer.indexOf("\n");
+      }
+    }
+    if (buffer.length > 0) {
+      yield buffer;
+    }
+  } finally {
+    try {
+      reader.releaseLock();
+    } catch {
+      // ignore
+    }
+  }
 }
 
 function resolveSummonResultError(resultMessage: SummonResultMessage | null): string | null {
@@ -694,4 +905,20 @@ function resolveSummonResultError(resultMessage: SummonResultMessage | null): st
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Summon failed.";
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isReadableStream(value: unknown): value is ReadableStream<Uint8Array> {
+  return Boolean(value && typeof (value as ReadableStream<Uint8Array>).getReader === "function");
+}
+
+function isWritableStream(value: unknown): value is WritableStream<Uint8Array> {
+  return Boolean(value && typeof (value as WritableStream<Uint8Array>).getWriter === "function");
+}
+
+function isFileSink(value: unknown): value is { write: (data: string) => void } {
+  return Boolean(value && typeof (value as { write?: unknown }).write === "function");
 }
