@@ -5,12 +5,20 @@ import { resolveCouncilStatePath } from "../state/path";
 
 export type SummonAgentSettings = {
   model: string | null;
+  reasoningEffort: string | null;
+};
+
+export type SummonModelReasoningEffort = {
+  reasoningEffort: string;
+  description: string;
 };
 
 export type SummonModelInfo = {
   value: string;
   displayName: string;
   description: string;
+  supportedReasoningEfforts: SummonModelReasoningEffort[];
+  defaultReasoningEffort: string;
 };
 
 export type SummonModelsCacheEntry = {
@@ -100,6 +108,7 @@ function normalizeAgentSettings(input: unknown): Record<string, SummonAgentSetti
 
     agents[agentName] = {
       model: normalizeOptionalString(rawSettings.model),
+      reasoningEffort: normalizeOptionalString(rawSettings.reasoningEffort ?? rawSettings.reasoning_effort),
     };
   }
 
@@ -115,11 +124,19 @@ function applyUpdate(current: SummonSettings, update: SummonSettingsUpdate): Sum
         continue;
       }
 
-      const existing = nextAgents[agentName] ?? { model: null };
+      const existing = nextAgents[agentName] ?? { model: null, reasoningEffort: null };
       const model = "model" in agentUpdate ? normalizeOptionalString(agentUpdate.model) : existing.model;
+      const reasoningEffort =
+        "reasoningEffort" in agentUpdate || "reasoning_effort" in agentUpdate
+          ? normalizeOptionalString(
+              (agentUpdate as Record<string, unknown>).reasoningEffort ??
+                (agentUpdate as Record<string, unknown>).reasoning_effort,
+            )
+          : existing.reasoningEffort;
 
       nextAgents[agentName] = {
         model,
+        reasoningEffort,
       };
     }
   }
@@ -206,12 +223,39 @@ function normalizeSummonModelInfo(input: unknown): SummonModelInfo | null {
 
   const displayName = normalizeOptionalString(input.displayName) ?? value;
   const description = normalizeOptionalString(input.description) ?? "";
+  const supportedReasoningEfforts = Array.isArray(input.supportedReasoningEfforts)
+    ? normalizeReasoningEfforts(input.supportedReasoningEfforts)
+    : Array.isArray(input.supported_reasoning_efforts)
+      ? normalizeReasoningEfforts(input.supported_reasoning_efforts)
+      : [];
+  const defaultReasoningEffort =
+    normalizeOptionalString(input.defaultReasoningEffort ?? input.default_reasoning_effort) ?? "";
 
   return {
     value,
     displayName,
     description,
+    supportedReasoningEfforts,
+    defaultReasoningEffort,
   };
+}
+
+function normalizeReasoningEfforts(input: unknown[]): SummonModelReasoningEffort[] {
+  return input
+    .map((entry) => {
+      if (!isRecord(entry)) {
+        return null;
+      }
+      const reasoningEffort = normalizeOptionalString(entry.reasoningEffort ?? entry.reasoning_effort);
+      if (!reasoningEffort) {
+        return null;
+      }
+      return {
+        reasoningEffort,
+        description: normalizeOptionalString(entry.description) ?? "",
+      };
+    })
+    .filter((entry): entry is SummonModelReasoningEffort => entry !== null);
 }
 
 function applyModelsCacheUpdate(

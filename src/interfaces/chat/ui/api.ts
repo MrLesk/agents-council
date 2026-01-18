@@ -77,6 +77,7 @@ export async function refreshSummonModels(): Promise<SummonSettingsResponse> {
 export async function updateSummonSettings(payload: {
   agent: string;
   model?: string | null;
+  reasoning_effort?: string | null;
 }): Promise<SummonSettingsResponse> {
   return postJson<SummonSettingsResponse>("/update-summon-settings", payload);
 }
@@ -84,6 +85,7 @@ export async function updateSummonSettings(payload: {
 export async function summonAgent(payload: {
   agent?: string | null;
   model?: string | null;
+  reasoning_effort?: string | null;
 }): Promise<SummonAgentResponse> {
   return postJson<SummonAgentResponse>("/summon-agent", payload);
 }

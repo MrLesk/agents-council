@@ -40,6 +40,20 @@ function formatSummonModelLabel(model: SummonModelInfoDto): string {
   return model.display_name.trim() || model.value;
 }
 
+function resolveReasoningEffort(model: SummonModelInfoDto | null, savedEffort: string | null): string {
+  if (!model) {
+    return "";
+  }
+  const options = model.supported_reasoning_efforts ?? [];
+  if (options.length === 0) {
+    return "";
+  }
+  if (savedEffort && options.some((effort) => effort.reasoning_effort === savedEffort)) {
+    return savedEffort;
+  }
+  return model.default_reasoning_effort || options[0]?.reasoning_effort || "";
+}
+
 type HallProps = {
   name: string;
   council: CouncilContext;
@@ -70,6 +84,7 @@ export function Hall({ name, council, onNameChange }: HallProps) {
   const [summonSettings, setSummonSettings] = useState<SummonSettingsResponse | null>(null);
   const [summonAgentName, setSummonAgentName] = useState("");
   const [summonModel, setSummonModel] = useState("");
+  const [summonReasoningEffort, setSummonReasoningEffort] = useState("");
   const [summonBusy, setSummonBusy] = useState(false);
   const [refreshingModels, setRefreshingModels] = useState(false);
   const [summonError, setSummonError] = useState<string | null>(null);
@@ -112,6 +127,11 @@ export function Hall({ name, council, onNameChange }: HallProps) {
   const allowModelOverride = hasSummonModels;
   const showDefaultOption = isCodexAgent || !hasSummonModels;
   const selectModelValue = allowModelOverride ? summonModel : "";
+  const selectedSummonModel = summonModels.find((model) => model.value === summonModel) ?? null;
+  const reasoningOptions = selectedSummonModel?.supported_reasoning_efforts ?? [];
+  const hasReasoningOptions = reasoningOptions.length > 0;
+  const allowReasoningOverride = hasReasoningOptions;
+  const selectReasoningValue = allowReasoningOverride ? summonReasoningEffort : "";
   const missingSummonModel =
     summonModel.trim().length > 0 ? !summonModels.some((model) => model.value === summonModel) : false;
 
@@ -163,17 +183,16 @@ export function Hall({ name, council, onNameChange }: HallProps) {
     setSummonAgentName(agent);
     const agentSettings = settings.agents[agent];
     const savedModel = agentSettings?.model ?? null;
+    const savedEffort = agentSettings?.reasoning_effort ?? null;
     const availableModels = settings.supported_models_by_agent[agent] ?? [];
-    if (savedModel) {
-      setSummonModel(savedModel);
-      return;
-    }
-    const [firstModel] = availableModels;
-    if (firstModel) {
-      setSummonModel(firstModel.value);
-      return;
-    }
-    setSummonModel("");
+    const selectedModel =
+      savedModel && savedModel.trim().length > 0
+        ? (availableModels.find((model) => model.value === savedModel) ?? null)
+        : (availableModels[0] ?? null);
+    const nextModel = selectedModel?.value ?? "";
+    setSummonModel(nextModel);
+    const nextEffort = resolveReasoningEffort(selectedModel, savedEffort);
+    setSummonReasoningEffort(nextEffort);
   }, []);
 
   const isNearBottom = useCallback(() => {
@@ -223,6 +242,37 @@ export function Hall({ name, council, onNameChange }: HallProps) {
       cancelled = true;
     };
   }, [showSummonAgent, applySummonDefaults]);
+
+  useEffect(() => {
+    if (!summonSettings) {
+      if (summonReasoningEffort !== "") {
+        setSummonReasoningEffort("");
+      }
+      return;
+    }
+    const model = selectedSummonModel;
+    if (!model) {
+      if (summonReasoningEffort !== "") {
+        setSummonReasoningEffort("");
+      }
+      return;
+    }
+    const options = model.supported_reasoning_efforts ?? [];
+    if (options.length === 0) {
+      if (summonReasoningEffort !== "") {
+        setSummonReasoningEffort("");
+      }
+      return;
+    }
+    if (summonReasoningEffort && options.some((effort) => effort.reasoning_effort === summonReasoningEffort)) {
+      return;
+    }
+    const savedEffort = summonSettings.agents[summonAgentName]?.reasoning_effort ?? null;
+    const nextEffort = resolveReasoningEffort(model, savedEffort);
+    if (nextEffort !== summonReasoningEffort) {
+      setSummonReasoningEffort(nextEffort);
+    }
+  }, [selectedSummonModel, summonAgentName, summonReasoningEffort, summonSettings]);
 
   // Detect new messages from WebSocket updates
   useEffect(() => {
@@ -279,15 +329,20 @@ export function Hall({ name, council, onNameChange }: HallProps) {
     }
 
     const model = allowModelOverride ? summonModel.trim() : "";
+    const reasoningEffort = allowReasoningOverride ? summonReasoningEffort.trim() : "";
     const summonPayload = {
       agent: summonAgentName,
       model: model.length > 0 ? model : null,
+      ...(allowReasoningOverride ? { reasoning_effort: reasoningEffort.length > 0 ? reasoningEffort : null } : {}),
     };
-    const settingsPayload: { agent: string; model?: string | null } = {
+    const settingsPayload: { agent: string; model?: string | null; reasoning_effort?: string | null } = {
       agent: summonAgentName,
     };
     if (allowModelOverride) {
       settingsPayload.model = model.length > 0 ? model : null;
+    }
+    if (allowReasoningOverride) {
+      settingsPayload.reasoning_effort = reasoningEffort.length > 0 ? reasoningEffort : null;
     }
 
     // Show brief loading state on button
@@ -769,6 +824,28 @@ export function Hall({ name, council, onNameChange }: HallProps) {
                     ))}
                   </select>
                 </div>
+                {hasReasoningOptions ? (
+                  <>
+                    <label className="label" htmlFor="summon-reasoning">
+                      Reasoning
+                    </label>
+                    <div className="select-wrapper">
+                      <select
+                        id="summon-reasoning"
+                        className="select"
+                        value={selectReasoningValue}
+                        onChange={(event) => setSummonReasoningEffort(event.target.value)}
+                        disabled={summonBusy}
+                      >
+                        {reasoningOptions.map((effort) => (
+                          <option key={effort.reasoning_effort} value={effort.reasoning_effort}>
+                            {effort.reasoning_effort}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </>
+                ) : null}
                 <div className="dialog-actions">
                   <button type="button" className="btn-ghost" onClick={closeSummonAgentModal} disabled={summonBusy}>
                     Cancel

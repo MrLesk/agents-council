@@ -1,5 +1,6 @@
 import { createSdkMcpServer, query, tool } from "@anthropic-ai/claude-agent-sdk";
 import { Codex } from "@openai/codex-sdk";
+import type { ModelReasoningEffort } from "@openai/codex-sdk";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { appendFile, readFile } from "node:fs/promises";
 import os from "node:os";
@@ -42,6 +43,7 @@ export function resolveDefaultSummonAgent(
 export type SummonAgentInput = {
   agent: string;
   model?: string | null;
+  reasoningEffort?: string | null;
 };
 
 export type SummonAgentResult = {
@@ -72,6 +74,7 @@ const CLAUDE_CODE_PATH_ENV = "CLAUDE_CODE_PATH";
 const CODEX_PATH_ENV = "CODEX_PATH";
 const MODEL_REFRESH_TIMEOUT_MS = 8000;
 const CODEX_CONFIG_PATH = path.join(os.homedir(), ".codex", "config.toml");
+const MODEL_REASONING_EFFORTS: ModelReasoningEffort[] = ["minimal", "low", "medium", "high", "xhigh"];
 
 function isAbsolutePath(p: string): boolean {
   // Unix absolute path or Windows absolute path (C:\... or \\...)
@@ -256,6 +259,8 @@ async function fetchClaudeSupportedModels(): Promise<SummonModelInfo[]> {
             ? model.displayName
             : model.value,
         description: typeof model.description === "string" ? model.description : "",
+        supportedReasoningEfforts: [],
+        defaultReasoningEffort: "",
       }))
       .filter((model) => model.value.trim().length > 0);
   } catch {
@@ -402,6 +407,8 @@ async function loadCodexFallbackModels(): Promise<SummonModelInfo[]> {
       value: defaultModel,
       displayName: defaultModel,
       description: "",
+      supportedReasoningEfforts: [],
+      defaultReasoningEffort: "",
     },
   ];
 }
@@ -470,20 +477,23 @@ export async function summonClaudeAgent(input: SummonAgentInput): Promise<Summon
   });
 
   const settings = await loadSummonSettings();
-  const savedAgent = settings.agents[agent] ?? { model: null };
+  const savedAgent = settings.agents[agent] ?? { model: null, reasoningEffort: null };
   const model = input.model === undefined ? savedAgent.model : normalizeOptionalString(input.model);
+  const reasoningEffort =
+    input.reasoningEffort === undefined ? savedAgent.reasoningEffort : normalizeOptionalString(input.reasoningEffort);
 
   await upsertSummonSettings({
     lastUsedAgent: agent,
     agents: {
       [agent]: {
         model,
+        reasoningEffort,
       },
     },
   });
   await appendSummonLog({
     event: "summon_settings",
-    data: { agent, model },
+    data: { agent, model, reasoningEffort },
   });
 
   const service = new CouncilServiceImpl(store);
@@ -592,20 +602,23 @@ export async function summonCodexAgent(input: SummonAgentInput): Promise<SummonA
   });
 
   const settings = await loadSummonSettings();
-  const savedAgent = settings.agents[agent] ?? { model: null };
+  const savedAgent = settings.agents[agent] ?? { model: null, reasoningEffort: null };
   const model = input.model === undefined ? savedAgent.model : normalizeOptionalString(input.model);
+  const reasoningEffort =
+    input.reasoningEffort === undefined ? savedAgent.reasoningEffort : normalizeOptionalString(input.reasoningEffort);
 
   await upsertSummonSettings({
     lastUsedAgent: agent,
     agents: {
       [agent]: {
         model,
+        reasoningEffort,
       },
     },
   });
   await appendSummonLog({
     event: "summon_settings",
-    data: { agent, model },
+    data: { agent, model, reasoningEffort },
   });
 
   const requestFeedback = state.feedback.filter((entry) => entry.requestId === request.id);
@@ -614,6 +627,7 @@ export async function summonCodexAgent(input: SummonAgentInput): Promise<SummonA
   const codex = codexPath ? new Codex({ codexPathOverride: codexPath }) : new Codex();
   const thread = codex.startThread({
     model: model ?? undefined,
+    modelReasoningEffort: normalizeModelReasoningEffort(reasoningEffort),
     sandboxMode: "read-only",
     workingDirectory: process.cwd(),
     skipGitRepoCheck: true,
@@ -818,6 +832,13 @@ function normalizeOptionalString(value: unknown): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
+function normalizeModelReasoningEffort(value: string | null): ModelReasoningEffort | undefined {
+  if (!value) {
+    return undefined;
+  }
+  return MODEL_REASONING_EFFORTS.includes(value as ModelReasoningEffort) ? (value as ModelReasoningEffort) : undefined;
+}
+
 function normalizeModelInfoFromAny(input: unknown): SummonModelInfo | null {
   if (!isRecord(input)) {
     return null;
@@ -829,12 +850,39 @@ function normalizeModelInfoFromAny(input: unknown): SummonModelInfo | null {
   const displayName =
     normalizeOptionalString(input.displayName ?? input.display_name ?? input.model ?? input.id) ?? value;
   const description = normalizeOptionalString(input.description) ?? "";
+  const supportedReasoningEfforts = Array.isArray(input.supportedReasoningEfforts)
+    ? normalizeReasoningEfforts(input.supportedReasoningEfforts)
+    : Array.isArray(input.supported_reasoning_efforts)
+      ? normalizeReasoningEfforts(input.supported_reasoning_efforts)
+      : [];
+  const defaultReasoningEffort =
+    normalizeOptionalString(input.defaultReasoningEffort ?? input.default_reasoning_effort) ?? "";
 
   return {
     value,
     displayName,
     description,
+    supportedReasoningEfforts,
+    defaultReasoningEffort,
   };
+}
+
+function normalizeReasoningEfforts(input: unknown[]): { reasoningEffort: string; description: string }[] {
+  return input
+    .map((entry) => {
+      if (!isRecord(entry)) {
+        return null;
+      }
+      const reasoningEffort = normalizeOptionalString(entry.reasoningEffort ?? entry.reasoning_effort);
+      if (!reasoningEffort) {
+        return null;
+      }
+      return {
+        reasoningEffort,
+        description: normalizeOptionalString(entry.description) ?? "",
+      };
+    })
+    .filter((entry): entry is { reasoningEffort: string; description: string } => entry !== null);
 }
 
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {

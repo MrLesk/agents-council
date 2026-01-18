@@ -44,12 +44,15 @@ type ChatServerOptions = {
 type JsonRecord = Record<string, unknown>;
 type SummonAgentSettingsDto = {
   model: string | null;
+  reasoning_effort: string | null;
 };
 
 type SummonModelInfoDto = {
   value: string;
   display_name: string;
   description: string;
+  supported_reasoning_efforts: { reasoning_effort: string; description: string }[];
+  default_reasoning_effort: string;
 };
 
 type SummonSettingsResponse = {
@@ -262,16 +265,20 @@ async function handleUpdateSummonSettings(req: Request): Promise<Response> {
   }
 
   const model = optionalStringOrNull(body, "model");
+  const reasoningEffort = optionalStringOrNull(body, "reasoning_effort");
   const update: {
     lastUsedAgent: string;
-    agents?: Record<string, { model?: string | null }>;
+    agents?: Record<string, { model?: string | null; reasoningEffort?: string | null }>;
   } = {
     lastUsedAgent: agent,
   };
 
-  const agentUpdate: { model?: string | null } = {};
+  const agentUpdate: { model?: string | null; reasoningEffort?: string | null } = {};
   if (model !== undefined) {
     agentUpdate.model = model;
+  }
+  if (reasoningEffort !== undefined) {
+    agentUpdate.reasoningEffort = reasoningEffort;
   }
   if (Object.keys(agentUpdate).length > 0) {
     update.agents = { [agent]: agentUpdate };
@@ -297,9 +304,11 @@ async function handleSummonAgent(req: Request): Promise<Response> {
   }
 
   const model = optionalStringOrNull(body, "model");
+  const reasoningEffort = optionalStringOrNull(body, "reasoning_effort");
   const result = await summonAgent({
     agent,
     model,
+    reasoningEffort,
   });
 
   return Response.json(mapSummonAgentResponse(result));
@@ -388,7 +397,16 @@ function optionalStringOrNull(body: JsonRecord, field: string): string | null | 
 }
 
 function mapSupportedModelsByAgent(
-  supportedModelsByAgent: Record<string, { value: string; displayName: string; description: string }[]>,
+  supportedModelsByAgent: Record<
+    string,
+    {
+      value: string;
+      displayName: string;
+      description: string;
+      supportedReasoningEfforts: { reasoningEffort: string; description: string }[];
+      defaultReasoningEffort: string;
+    }[]
+  >,
 ): Record<string, SummonModelInfoDto[]> {
   const mapped: Record<string, SummonModelInfoDto[]> = {};
 
@@ -397,6 +415,11 @@ function mapSupportedModelsByAgent(
       value: model.value,
       display_name: model.displayName,
       description: model.description,
+      supported_reasoning_efforts: model.supportedReasoningEfforts.map((effort) => ({
+        reasoning_effort: effort.reasoningEffort,
+        description: effort.description,
+      })),
+      default_reasoning_effort: model.defaultReasoningEffort,
     }));
   }
 
@@ -413,6 +436,7 @@ function mapSummonSettings(
   for (const [agent, agentSettings] of Object.entries(settings.agents)) {
     agents[agent] = {
       model: agentSettings.model,
+      reasoning_effort: agentSettings.reasoningEffort,
     };
   }
 

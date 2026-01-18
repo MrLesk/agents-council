@@ -76,12 +76,15 @@ export type SendResponseResponse = {
 
 export type SummonAgentSettingsDto = {
   model: string | null;
+  reasoning_effort: string | null;
 };
 
 export type SummonModelInfoDto = {
   value: string;
   display_name: string;
   description: string;
+  supported_reasoning_efforts: { reasoning_effort: string; description: string }[];
+  default_reasoning_effort: string;
 };
 
 export type SummonSettingsResponse = {
