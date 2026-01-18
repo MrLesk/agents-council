@@ -222,7 +222,7 @@ Unchecked items are planned and may change based on feedback.
 - [x] v0.1 - MCP Council
 - [x] v0.2 - Chat UI
 - [x] v0.3 - Summon Claude
-- [ ] v0.4 - Summon Codex
+- [x] v0.4 - Summon Codex
 - [ ] v0.5 - Summon Gemini
 - [ ] v0.6 - Multiple council sessions in parallel
 - [ ] v0.7 - Connect to external LLMs via API Keys
