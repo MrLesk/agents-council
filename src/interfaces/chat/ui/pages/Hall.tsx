@@ -86,6 +86,7 @@ export function Hall({ name, council, onNameChange }: HallProps) {
   const [summonModel, setSummonModel] = useState("");
   const [summonReasoningEffort, setSummonReasoningEffort] = useState("");
   const [summonBusy, setSummonBusy] = useState(false);
+  const [localPendingAgents, setLocalPendingAgents] = useState<string[]>([]);
   const [refreshingModels, setRefreshingModels] = useState(false);
   const [summonError, setSummonError] = useState<string | null>(null);
   const [summonNotice, setSummonNotice] = useState<string | null>(null);
@@ -134,6 +135,7 @@ export function Hall({ name, council, onNameChange }: HallProps) {
   const selectReasoningValue = allowReasoningOverride ? summonReasoningEffort : "";
   const missingSummonModel =
     summonModel.trim().length > 0 ? !summonModels.some((model) => model.value === summonModel) : false;
+  const displayPendingParticipants = Array.from(new Set([...pendingParticipants, ...localPendingAgents]));
 
   const sessionLabel =
     sessionStatus === "none" ? "No session" : sessionStatus === "active" ? "In session" : "Concluded";
@@ -244,6 +246,22 @@ export function Hall({ name, council, onNameChange }: HallProps) {
   }, [showSummonAgent, applySummonDefaults]);
 
   useEffect(() => {
+    setLocalPendingAgents([]);
+  }, [currentRequest?.id]);
+
+  useEffect(() => {
+    const currentRequestId = currentRequest?.id;
+    if (!currentRequestId) {
+      return;
+    }
+    setLocalPendingAgents((prev) =>
+      prev.filter(
+        (agent) => !feedback.some((entry) => entry.request_id === currentRequestId && entry.author === agent),
+      ),
+    );
+  }, [currentRequest?.id, feedback]);
+
+  useEffect(() => {
     if (!summonSettings) {
       if (summonReasoningEffort !== "") {
         setSummonReasoningEffort("");
@@ -350,6 +368,7 @@ export function Hall({ name, council, onNameChange }: HallProps) {
     setSummonError(null);
     setSummonNotice(null);
     setSummonFailure(null);
+    setLocalPendingAgents((prev) => (prev.includes(summonAgentName) ? prev : [...prev, summonAgentName]));
 
     try {
       // Save settings first
@@ -365,6 +384,7 @@ export function Hall({ name, council, onNameChange }: HallProps) {
       // Run summon in background
       await summonAgent(summonPayload);
     } catch (err) {
+      setLocalPendingAgents((prev) => prev.filter((agent) => agent !== summonAgentName));
       // Show error inline in the messages area
       const message = err instanceof Error ? err.message : "Unable to summon agent.";
       setSummonFailure({ agent: summonAgentName, message });
@@ -520,7 +540,7 @@ export function Hall({ name, council, onNameChange }: HallProps) {
             <div className="empty">No council is in session.</div>
           ) : (
             <div className="messages" ref={messagesContainerRef}>
-              {feedback.length === 0 && pendingParticipants.length === 0 && !summonFailure ? (
+              {feedback.length === 0 && displayPendingParticipants.length === 0 && !summonFailure ? (
                 <div className="empty">The council listens...</div>
               ) : (
                 <>
@@ -544,7 +564,7 @@ export function Hall({ name, council, onNameChange }: HallProps) {
                       </article>
                     );
                   })}
-                  {pendingParticipants.map((agentName) => (
+                  {displayPendingParticipants.map((agentName) => (
                     <article
                       key={`pending-${agentName}`}
                       className={`message-card panel-secondary agent-${getAgentType(agentName)} thinking`}
