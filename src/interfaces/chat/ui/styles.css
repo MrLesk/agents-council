@@ -1589,13 +1589,6 @@ body::before {
   letter-spacing: 1px;
 }
 
-.label-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
 .btn-icon {
   width: 32px;
   height: 32px;
@@ -1637,6 +1630,18 @@ body::before {
   border-color: rgba(160, 150, 130, 0.3);
   color: var(--parchment-muted);
   background: rgba(10, 8, 7, 0.3);
+}
+
+.dialog-header-action {
+  position: absolute;
+  left: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 30px;
+  height: 30px;
+  font-size: 14px;
+  background: rgba(12, 9, 7, 0.7);
+  border-color: rgba(210, 177, 119, 0.4);
 }
 
 @keyframes fadeIn {

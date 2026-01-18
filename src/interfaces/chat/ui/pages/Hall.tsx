@@ -4,7 +4,7 @@ import MarkdownPreview, { type MarkdownPreviewProps } from "@uiw/react-markdown-
 import { Settings } from "../components/Settings";
 import { getSummonSettings, refreshSummonModels, summonAgent, updateSummonSettings } from "../api";
 import type { CouncilContext } from "../hooks/useCouncil";
-import type { SummonSettingsResponse } from "../types";
+import type { SummonModelInfoDto, SummonSettingsResponse } from "../types";
 
 type AgentType = "claude" | "codex" | "gemini" | "human" | "other";
 
@@ -34,6 +34,15 @@ function AgentBadge({ name }: { name: string }) {
       <span className={`agent-name agent-${agentType}`}>{name}</span>
     </span>
   );
+}
+
+function formatSummonModelLabel(model: SummonModelInfoDto): string {
+  const name = model.display_name.trim() || model.value;
+  const description = model.description.trim();
+  if (description.length > 0 && description !== name) {
+    return `${name} — ${description}`;
+  }
+  return name;
 }
 
 type HallProps = {
@@ -75,6 +84,7 @@ export function Hall({ name, council, onNameChange }: HallProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const prevFeedbackLengthRef = useRef(0);
+  const refreshNoticeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const {
     connection,
@@ -113,6 +123,23 @@ export function Hall({ name, council, onNameChange }: HallProps) {
   const sessionLabel =
     sessionStatus === "none" ? "No session" : sessionStatus === "active" ? "In session" : "Concluded";
   const sessionOrbClass = `status-orb status-orb-${sessionStatus}`;
+
+  const clearSummonNoticeTimeout = useCallback(() => {
+    if (refreshNoticeTimeoutRef.current !== null) {
+      clearTimeout(refreshNoticeTimeoutRef.current);
+      refreshNoticeTimeoutRef.current = null;
+    }
+  }, []);
+
+  const scheduleSummonNoticeClear = useCallback(() => {
+    clearSummonNoticeTimeout();
+    refreshNoticeTimeoutRef.current = setTimeout(() => {
+      setSummonNotice(null);
+      refreshNoticeTimeoutRef.current = null;
+    }, 2500);
+  }, [clearSummonNoticeTimeout]);
+
+  useEffect(() => () => clearSummonNoticeTimeout(), [clearSummonNoticeTimeout]);
 
   const handleStart = async () => {
     const success = await start(name, requestDraft);
@@ -303,11 +330,13 @@ export function Hall({ name, council, onNameChange }: HallProps) {
     setRefreshingModels(true);
     setSummonError(null);
     setSummonNotice("Refreshing models...");
+    clearSummonNoticeTimeout();
     try {
       const updatedSettings = await refreshSummonModels();
       setSummonSettings(updatedSettings);
       applySummonDefaults(updatedSettings, summonAgentName);
       setSummonNotice("Models refreshed.");
+      scheduleSummonNoticeClear();
     } catch (err) {
       setSummonError(err instanceof Error ? err.message : "Failed to refresh models.");
       setSummonNotice(null);
@@ -320,6 +349,7 @@ export function Hall({ name, council, onNameChange }: HallProps) {
     setShowSummonAgent(false);
     setSummonError(null);
     setSummonNotice(null);
+    clearSummonNoticeTimeout();
   };
 
   return (
@@ -662,6 +692,16 @@ export function Hall({ name, council, onNameChange }: HallProps) {
           <div className="dialog-panel">
             <div className="dialog-header">
               <h2>Summon an Agent</h2>
+              <button
+                type="button"
+                className="btn-icon dialog-header-action"
+                onClick={handleRefreshModels}
+                title="Refresh models"
+                aria-label="Refresh models"
+                disabled={!summonSettings || summonBusy || refreshingModels}
+              >
+                ⟳
+              </button>
               <button type="button" className="dialog-close" onClick={closeSummonAgentModal} aria-label="Close">
                 ×
               </button>
@@ -706,21 +746,9 @@ export function Hall({ name, council, onNameChange }: HallProps) {
                     })}
                   </select>
                 </div>
-                <div className="label-row">
-                  <label className="label" htmlFor="summon-model">
-                    Model
-                  </label>
-                  <button
-                    type="button"
-                    className="btn-icon"
-                    onClick={handleRefreshModels}
-                    title="Refresh models"
-                    aria-label="Refresh models"
-                    disabled={summonBusy || refreshingModels}
-                  >
-                    ⟳
-                  </button>
-                </div>
+                <label className="label" htmlFor="summon-model">
+                  Model
+                </label>
                 {missingSummonModel ? <div className="select-hint">Saved model isn't in the current list.</div> : null}
                 {!hasSummonModels ? (
                   <div className="select-hint">No known models for this agent. Default settings will be used.</div>
@@ -741,7 +769,7 @@ export function Hall({ name, council, onNameChange }: HallProps) {
                     ) : null}
                     {summonModels.map((model) => (
                       <option key={model.value} value={model.value}>
-                        {model.description || model.display_name}
+                        {formatSummonModelLabel(model)}
                       </option>
                     ))}
                   </select>
