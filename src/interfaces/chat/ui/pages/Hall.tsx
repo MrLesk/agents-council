@@ -742,6 +742,7 @@ export function Hall({ name, council, onNameChange }: HallProps) {
           <div className="dialog-panel">
             <div className="dialog-header">
               <h2>Summon an Agent</h2>
+              {summonNotice ? <span className="dialog-status">{summonNotice}</span> : null}
               <button
                 type="button"
                 className="btn-icon dialog-header-action"
@@ -761,7 +762,6 @@ export function Hall({ name, council, onNameChange }: HallProps) {
                 {summonError}
               </div>
             ) : null}
-            {summonNotice ? <output className="notice">{summonNotice}</output> : null}
             {!summonSettings ? (
               <div className="empty">Loading summon settings...</div>
             ) : (

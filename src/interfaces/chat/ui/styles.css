@@ -1498,6 +1498,21 @@ body::before {
   box-shadow: 0 0 12px var(--gold-glow);
 }
 
+.dialog-status {
+  position: absolute;
+  bottom: 6px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(210, 177, 119, 0.4);
+  background: rgba(15, 11, 8, 0.75);
+  color: var(--parchment-muted);
+  font-size: 11px;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+}
+
 .dialog-form,
 .settings-form {
   display: flex;
