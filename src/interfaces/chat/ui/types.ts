@@ -95,6 +95,7 @@ export type SummonSettingsResponse = {
   default_agent: string;
   claude_code_path: string | null;
   claude_code_version: string | null;
+  codex_cli_version: string | null;
 };
 
 export type GlobalSettingsResponse = {

@@ -6,6 +6,7 @@ import { CouncilServiceImpl } from "../../core/services/council";
 import {
   SUPPORTED_SUMMON_AGENTS,
   getClaudeCodeVersion,
+  getCodexCliVersion,
   loadCachedSummonModelsByAgent,
   refreshSummonModelsByAgent,
   refreshSummonModelsInBackground,
@@ -63,6 +64,7 @@ type SummonSettingsResponse = {
   default_agent: string;
   claude_code_path: string | null;
   claude_code_version: string | null;
+  codex_cli_version: string | null;
 };
 
 type GlobalSettingsResponse = {
@@ -238,23 +240,28 @@ async function handleCloseCouncil(req: Request): Promise<Response> {
 }
 
 async function handleGetSummonSettings(): Promise<Response> {
-  const [settings, supportedModelsByAgent, version] = await Promise.all([
+  const [settings, supportedModelsByAgent, claudeCodeVersion, codexCliVersion] = await Promise.all([
     loadSummonSettings(),
     loadCachedSummonModelsByAgent(),
     getClaudeCodeVersion(),
+    getCodexCliVersion(),
   ]);
   if (Object.values(supportedModelsByAgent).some((models) => models.length === 0)) {
     refreshSummonModelsInBackground();
   }
   const supportedModelDtosByAgent = mapSupportedModelsByAgent(supportedModelsByAgent);
-  return Response.json(mapSummonSettings(settings, supportedModelDtosByAgent, version));
+  return Response.json(mapSummonSettings(settings, supportedModelDtosByAgent, claudeCodeVersion, codexCliVersion));
 }
 
 async function handleRefreshSummonModels(): Promise<Response> {
   const supportedModelsByAgent = await refreshSummonModelsByAgent();
-  const [settings, version] = await Promise.all([loadSummonSettings(), getClaudeCodeVersion()]);
+  const [settings, claudeCodeVersion, codexCliVersion] = await Promise.all([
+    loadSummonSettings(),
+    getClaudeCodeVersion(),
+    getCodexCliVersion(),
+  ]);
   const supportedModelDtosByAgent = mapSupportedModelsByAgent(supportedModelsByAgent);
-  return Response.json(mapSummonSettings(settings, supportedModelDtosByAgent, version));
+  return Response.json(mapSummonSettings(settings, supportedModelDtosByAgent, claudeCodeVersion, codexCliVersion));
 }
 
 async function handleUpdateSummonSettings(req: Request): Promise<Response> {
@@ -285,12 +292,13 @@ async function handleUpdateSummonSettings(req: Request): Promise<Response> {
   }
 
   const updated = await upsertSummonSettings(update);
-  const [supportedModelsByAgent, version] = await Promise.all([
+  const [supportedModelsByAgent, claudeCodeVersion, codexCliVersion] = await Promise.all([
     loadCachedSummonModelsByAgent(),
     getClaudeCodeVersion(),
+    getCodexCliVersion(),
   ]);
   const supportedModelDtosByAgent = mapSupportedModelsByAgent(supportedModelsByAgent);
-  return Response.json(mapSummonSettings(updated, supportedModelDtosByAgent, version));
+  return Response.json(mapSummonSettings(updated, supportedModelDtosByAgent, claudeCodeVersion, codexCliVersion));
 }
 
 async function handleSummonAgent(req: Request): Promise<Response> {
@@ -429,7 +437,8 @@ function mapSupportedModelsByAgent(
 function mapSummonSettings(
   settings: SummonSettings,
   supportedModelsByAgent: Record<string, SummonModelInfoDto[]>,
-  version: string | null,
+  claudeCodeVersion: string | null,
+  codexCliVersion: string | null,
 ): SummonSettingsResponse {
   const agents: Record<string, SummonAgentSettingsDto> = {};
 
@@ -447,7 +456,8 @@ function mapSummonSettings(
     supported_models_by_agent: supportedModelsByAgent,
     default_agent: resolveDefaultSummonAgent(settings.lastUsedAgent, SUPPORTED_SUMMON_AGENTS),
     claude_code_path: settings.claudeCodePath,
-    claude_code_version: version,
+    claude_code_version: claudeCodeVersion,
+    codex_cli_version: codexCliVersion,
   };
 }
 

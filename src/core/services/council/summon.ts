@@ -138,6 +138,7 @@ async function getCodexExecutablePath(): Promise<string | null> {
 }
 
 let cachedVersion: string | null = null;
+const cachedCodexVersionsByCommand = new Map<string, string>();
 
 export async function getClaudeCodeVersion(): Promise<string | null> {
   if (cachedVersion !== null) {
@@ -156,6 +157,32 @@ export async function getClaudeCodeVersion(): Promise<string | null> {
     if (match?.[1]) {
       cachedVersion = match[1];
       return cachedVersion;
+    }
+  } catch {
+    // Ignore errors
+  }
+  return null;
+}
+
+export async function getCodexCliVersion(): Promise<string | null> {
+  const codexPath = await getCodexExecutablePath();
+  const command = codexPath ?? "codex";
+  const cached = cachedCodexVersionsByCommand.get(command);
+  if (cached) {
+    return cached;
+  }
+
+  try {
+    const proc = Bun.spawn([command, "--version"], {
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const output = await new Response(proc.stdout).text();
+    // Output example: "codex-cli 0.105.0-alpha.10"
+    const match = output.match(/(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?|\d+\.\d+)/);
+    if (match?.[1]) {
+      cachedCodexVersionsByCommand.set(command, match[1]);
+      return match[1];
     }
   } catch {
     // Ignore errors

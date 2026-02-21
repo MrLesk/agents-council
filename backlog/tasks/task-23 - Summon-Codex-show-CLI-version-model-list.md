@@ -1,11 +1,11 @@
 ---
 id: TASK-23
 title: 'Summon Codex: show CLI version + model list'
-status: In Progress
+status: Done
 assignee:
   - codex
 created_date: '2026-01-08 21:14'
-updated_date: '2026-01-18 12:49'
+updated_date: '2026-02-21 17:31'
 labels: []
 milestone: 'm-3: v0.4 - Summon Codex'
 dependencies: []
@@ -19,9 +19,9 @@ Display the Codex CLI version in the summon UI and surface an actual list of ava
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Summon settings payload includes Codex CLI version and a populated Codex model list when available.
-- [ ] #2 Summon modal shows the Codex version label similar to Claude and uses the Codex model list for dropdown selection.
-- [ ] #3 MCP summon tool description lists Codex models alongside Claude when available.
+- [x] #1 Summon settings payload includes Codex CLI version and a populated Codex model list when available.
+- [x] #2 Summon modal shows the Codex version label similar to Claude and uses the Codex model list for dropdown selection.
+- [x] #3 MCP summon tool description lists Codex models alongside Claude when available.
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -42,3 +42,15 @@ Offline-first requirement: model discovery must not block MCP startup; use cache
 
 Completed subtasks 23.1–23.3 (offline model cache, codex app-server model/list, MCP/UI cached models + refresh button). Remaining parent requirements still open (Codex CLI version display).
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Added Codex CLI version support end-to-end: implemented `getCodexCliVersion()` in `src/core/services/council/summon.ts` (using `codex --version` and semver extraction) with caching.
+
+Extended summon settings response payload to include `codex_cli_version` in `src/interfaces/chat/server.ts` and `src/interfaces/chat/ui/types.ts`; all summon settings endpoints now fetch and return both Claude and Codex versions.
+
+Updated summon modal agent dropdown labels in `src/interfaces/chat/ui/pages/Hall.tsx` to show `Codex v<version>` similar to `Claude Code v<version>`.
+
+Verified required checks pass: `bun run typecheck` and `bun run format:check`.
+<!-- SECTION:FINAL_SUMMARY:END -->

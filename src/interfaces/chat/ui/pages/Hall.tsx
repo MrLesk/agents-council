@@ -810,7 +810,9 @@ export function Hall({ name, council, onNameChange }: HallProps) {
                       const displayName =
                         agent === "Claude" && summonSettings.claude_code_version
                           ? `Claude Code v${summonSettings.claude_code_version}`
-                          : agent;
+                          : agent === "Codex" && summonSettings.codex_cli_version
+                            ? `Codex v${summonSettings.codex_cli_version}`
+                            : agent;
                       return (
                         <option key={agent} value={agent}>
                           {displayName}
