@@ -6,7 +6,7 @@ title: >-
 status: To Do
 assignee: []
 created_date: '2026-02-21 21:11'
-updated_date: '2026-02-21 21:12'
+updated_date: '2026-02-21 21:24'
 labels:
   - ci
   - release
@@ -25,6 +25,9 @@ references:
 documentation:
   - docs/electrobun/guides/bundling-and-distribution.md
   - docs/electrobun/guides/cross-platform-development.md
+  - DEVELOPMENT.md
+  - README.md
+  - docs/council.md
 parent_task_id: TASK-26
 priority: high
 ---
@@ -42,4 +45,5 @@ Update build and release automation so Electrobun-generated binaries/artifacts a
 - [ ] #3 Install-sanity workflow verifies terminal CLI behavior (`--help`, `--version`, `mcp`) from published packages on all supported OS runners.
 - [ ] #4 Release artifacts include desktop-launchable binaries/installers appropriate for each platform.
 - [ ] #5 Packaging and release documentation reflects the new Electrobun-based distribution model.
+- [ ] #6 Developer and release documentation is updated in the same task (`DEVELOPMENT.md` plus Electrobun packaging docs) to reflect the implemented desktop+CLI distribution workflow and cross-platform expectations.
 <!-- AC:END -->

@@ -4,7 +4,7 @@ title: Documentation migration for Electrobun pivot and MCP v2 session contract
 status: To Do
 assignee: []
 created_date: '2026-02-21 21:12'
-updated_date: '2026-02-21 21:12'
+updated_date: '2026-02-21 21:24'
 labels:
   - docs
   - mcp
@@ -42,3 +42,9 @@ Rewrite user/developer documentation to remove obsolete web-chat guidance, expla
 - [ ] #4 Migration notes call out breaking changes and expected client updates.
 - [ ] #5 All documentation changes are internally consistent with implemented command and tool behavior.
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Archived by backlog-workflow correction: documentation must be captured in the owning implementation tasks, not deferred to a docs-only follow-up. Scope redistributed to TASK-26.2 (user-facing launch/CLI docs), TASK-26.4 (MCP contract + migration docs), and TASK-26.7 (developer/release docs).
+<!-- SECTION:NOTES:END -->

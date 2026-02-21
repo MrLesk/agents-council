@@ -2,7 +2,7 @@ project_name: "agents-council"
 default_status: "To Do"
 statuses: ["To Do", "In Progress", "Done"]
 labels: []
-milestones: []
+definition_of_done: ["Acceptance criteria are fully checked and match implemented behavior.", "Implementation plan is recorded in the task and reflects the final approach.", "bun run typecheck passes (when code changed).", "bun run format:check passes (when code changed).", "Relevant validation is run and recorded in task notes (tests, smoke checks, or manual verification).", "Documentation is updated in the same task when user/developer behavior changes (CLI, MCP contract, UI flow,      packaging/release behavior).", "Breaking changes and migration impact are documented in notes/final summary when applicable.", "Final summary is added with what changed, why, validation run, and remaining risks/follow-ups.", "Task status is set to Done only after all DoD items are checked."]
 date_format: yyyy-mm-dd
 max_column_width: 20
 auto_open_browser: true

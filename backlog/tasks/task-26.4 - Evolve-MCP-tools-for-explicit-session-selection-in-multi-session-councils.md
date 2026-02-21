@@ -4,7 +4,7 @@ title: Evolve MCP tools for explicit session selection in multi-session councils
 status: To Do
 assignee: []
 created_date: '2026-02-21 21:11'
-updated_date: '2026-02-21 21:12'
+updated_date: '2026-02-21 21:25'
 labels:
   - mcp
   - api
@@ -38,5 +38,5 @@ Update MCP council tool contracts and behavior so agents can target specific ses
 - [ ] #2 Server validation and errors clearly handle missing, invalid, or closed session targets.
 - [ ] #3 Markdown and JSON tool outputs reflect session-scoped behavior consistently.
 - [ ] #4 MCP Inspector validation covers session-specific start/join/get/send/close flows.
-- [ ] #5 User-facing MCP documentation is updated to describe the new contract and migration implications.
+- [ ] #5 MCP documentation updates are delivered in the same task (`docs/mcp.md` and `docs/council.md`) and include explicit migration notes for clients moving from implicit-session behavior to session-targeted calls.
 <!-- AC:END -->

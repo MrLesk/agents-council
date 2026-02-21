@@ -6,7 +6,7 @@ title: >-
 status: To Do
 assignee: []
 created_date: '2026-02-21 21:11'
-updated_date: '2026-02-21 21:12'
+updated_date: '2026-02-21 21:24'
 labels:
   - electrobun
   - desktop
@@ -57,7 +57,10 @@ Week 3-4: TASK-26.4 evolves MCP contract for explicit session targeting after TA
 
 Week 5: TASK-26.6 ports canonical Council Hall UI and wires real data/summon flows after TASK-26.5.
 
-Week 6: TASK-26.7 completes CI/release/npm packaging migration after TASK-26.2 + TASK-26.4. TASK-26.8 finalizes docs/migration guidance after TASK-26.4 + TASK-26.6 + TASK-26.7.
+Week 6: TASK-26.7 completes CI/release/npm packaging migration after TASK-26.2 + TASK-26.4, including required developer/release documentation updates in the same implementation task.
+
+Documentation workflow decision:
+- Documentation updates are embedded in the owning implementation tasks (TASK-26.2, TASK-26.4, TASK-26.7) rather than a standalone docs-only follow-up task.
 
 Delivery decisions locked with user:
 - Timeline horizon: 6 weeks.

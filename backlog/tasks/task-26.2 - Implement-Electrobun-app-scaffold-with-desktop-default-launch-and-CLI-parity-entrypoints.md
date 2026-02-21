@@ -6,7 +6,7 @@ title: >-
 status: To Do
 assignee: []
 created_date: '2026-02-21 21:11'
-updated_date: '2026-02-21 21:12'
+updated_date: '2026-02-21 21:24'
 labels:
   - electrobun
   - runtime
@@ -24,6 +24,7 @@ documentation:
   - docs/council.md
   - docs/electrobun/guides/hello-world.md
   - docs/electrobun/guides/creating-ui.md
+  - README.md
 parent_task_id: TASK-26
 priority: high
 ---
@@ -41,4 +42,5 @@ Introduce the Electrobun runtime scaffold and wire command entrypoints so direct
 - [ ] #3 Terminal command behavior remains compatible for existing CLI usage patterns, including `council mcp`.
 - [ ] #4 `council chat` remains available and opens/focuses desktop UI instead of starting Bun.serve web chat.
 - [ ] #5 No legacy web-chat server startup is required for primary UI operation.
+- [ ] #6 User-facing docs are updated in the same task (`README.md` and `docs/council.md`) to describe desktop-default launch, terminal CLI parity, and `council chat` alias behavior.
 <!-- AC:END -->
