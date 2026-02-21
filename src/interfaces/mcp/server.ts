@@ -13,11 +13,11 @@ import {
 } from "../../core/services/council/summon";
 import { FileCouncilStateStore } from "../../core/state/fileStateStore";
 import {
-  mapCloseCouncilInput,
+  mapCloseSessionInput,
   mapCloseCouncilResponse,
-  mapGetCurrentSessionDataInput,
+  mapGetSessionDataInput,
   mapGetCurrentSessionDataResponse,
-  mapSendResponseInput,
+  mapSendResponseToSessionInput,
   mapSendResponseResponse,
   mapSummonAgentInput,
   mapSummonAgentResponse,
@@ -26,6 +26,7 @@ import {
 } from "./mapper";
 import type {
   CloseCouncilParams,
+  CloseCouncilResponse,
   GetCurrentSessionDataParams,
   GetCurrentSessionDataResponse,
   JoinCouncilParams,
@@ -47,13 +48,14 @@ type ToolName =
   | "summon_agent";
 type ToolContext = {
   cursor?: string;
+  sessionId?: string;
 };
 
 const serverInstructions = [
   "If you need feedback from other AI agents, start a council with start_council.",
-  "If you are requested to join the council, call join_council, read the request, and send_response as soon as possible.",
-  "Use get_current_session_data to poll for new responses; pass the cursor returned to fetch only newer messages.",
-  "Use close_council to end the current session with a conclusion.",
+  "If you are requested to join the council, call join_council with session_id, read the request, and send_response with the same session_id as soon as possible.",
+  "Use get_current_session_data with session_id to poll for new responses; pass the cursor returned to fetch only newer messages.",
+  "Use close_council with session_id to end that session with a conclusion.",
 ].join("\n");
 
 const server = new McpServer(
@@ -106,6 +108,7 @@ function registerTools(options: {
     return;
   }
   toolsRegistered = true;
+  const sessionIdSchema = z.string().trim().min(1, "session_id is required.");
 
   const startCouncilSchema: z.ZodTypeAny = options.hasDefaultAgentName
     ? z.object({ request: z.string().min(1) }).strict()
@@ -117,27 +120,35 @@ function registerTools(options: {
         .strict();
 
   const joinCouncilSchema: z.ZodTypeAny = options.hasDefaultAgentName
-    ? z.object({}).strict()
+    ? z
+        .object({
+          session_id: sessionIdSchema,
+        })
+        .strict()
     : z
         .object({
+          session_id: sessionIdSchema,
           agent_name: z.string().min(1),
         })
         .strict();
 
   const getCurrentSessionDataSchema: z.ZodTypeAny = z
     .object({
+      session_id: sessionIdSchema,
       cursor: z.string().min(1).optional(),
     })
     .strict();
 
   const sendResponseSchema: z.ZodTypeAny = z
     .object({
+      session_id: sessionIdSchema,
       content: z.string().min(1),
     })
     .strict();
 
   const closeCouncilSchema: z.ZodTypeAny = z
     .object({
+      session_id: sessionIdSchema,
       conclusion: z.string().min(1),
     })
     .strict();
@@ -206,22 +217,33 @@ function registerTools(options: {
   registerTool<GetCurrentSessionDataParams>(
     "get_current_session_data",
     {
-      description: "Get the current session request and responses since the last cursor.",
+      description: "Get request and responses for a specific session_id since the last cursor.",
       inputSchema: getCurrentSessionDataSchema,
     },
     async (params) => {
       try {
+        const sessionId = params.session_id?.trim();
+        if (!sessionId) {
+          throw new Error("session_id is required for get_current_session_data.");
+        }
         const resolvedName = agentName;
         if (!resolvedName) {
           throw new Error(
             "get_current_session_data needs a stored agent name. Call join_council (or start_council) once, then retry.",
           );
         }
-        const result = await service.getCurrentSessionData(
-          mapGetCurrentSessionDataInput({ cursor: params.cursor, agent_name: resolvedName }),
+        const result = await service.getSessionData(
+          mapGetSessionDataInput({
+            session_id: sessionId,
+            cursor: params.cursor,
+            agent_name: resolvedName,
+          }),
         );
         const response = mapGetCurrentSessionDataResponse(result);
-        return toolOk("get_current_session_data", response, { cursor: params.cursor });
+        return toolOk("get_current_session_data", response, {
+          sessionId,
+          cursor: params.cursor,
+        });
       } catch (error) {
         return toolError(error);
       }
@@ -229,8 +251,8 @@ function registerTools(options: {
   );
 
   const joinCouncilDescription = options.hasDefaultAgentName
-    ? "Join the current council session and fetch the request and responses."
-    : "Join the current council session and fetch the request and responses. Provide agent_name to identify yourself; the server may append #1, #2, etc. if the name is already taken.";
+    ? "Join a specific council session via session_id and fetch the request and responses."
+    : "Join a specific council session via session_id and fetch the request and responses. Provide agent_name to identify yourself; the server may append #1, #2, etc. if the name is already taken.";
 
   const modelDescriptions = formatSummonModelDescriptions(options.supportedModelsByAgent);
   const summonAgentDescription = modelDescriptions
@@ -245,6 +267,10 @@ function registerTools(options: {
     },
     async (params) => {
       try {
+        const sessionId = params.session_id?.trim();
+        if (!sessionId) {
+          throw new Error("session_id is required for join_council.");
+        }
         const resolvedName = options.hasDefaultAgentName ? agentName : params.agent_name?.trim();
         if (!resolvedName) {
           throw new Error(
@@ -253,10 +279,18 @@ function registerTools(options: {
               : "agent_name is required for join_council.",
           );
         }
-        const result = await service.getCurrentSessionData(mapGetCurrentSessionDataInput({ agent_name: resolvedName }));
+        const result = await service.getSessionData(
+          mapGetSessionDataInput({
+            session_id: sessionId,
+            agent_name: resolvedName,
+          }),
+        );
         const response = mapGetCurrentSessionDataResponse(result);
         agentName = response.agent_name;
-        return toolOk("join_council", response, { cursor: undefined });
+        return toolOk("join_council", response, {
+          sessionId,
+          cursor: undefined,
+        });
       } catch (error) {
         return toolError(error);
       }
@@ -266,20 +300,28 @@ function registerTools(options: {
   registerTool<CloseCouncilParams>(
     "close_council",
     {
-      description: "Close the current council session with a conclusion.",
+      description: "Close a specific council session with a conclusion.",
       inputSchema: closeCouncilSchema,
     },
     async (params) => {
       try {
+        const sessionId = params.session_id?.trim();
+        if (!sessionId) {
+          throw new Error("session_id is required for close_council.");
+        }
         const resolvedName = agentName;
         if (!resolvedName) {
           throw new Error("Agent name not set for close_council. Call start_council or join_council first.");
         }
-        const result = await service.closeCouncil(
-          mapCloseCouncilInput({ conclusion: params.conclusion, agent_name: resolvedName }),
+        const result = await service.closeSession(
+          mapCloseSessionInput({
+            session_id: sessionId,
+            conclusion: params.conclusion,
+            agent_name: resolvedName,
+          }),
         );
         const response = mapCloseCouncilResponse(result);
-        return toolOk("close_council", response);
+        return toolOk("close_council", response, { sessionId });
       } catch (error) {
         return toolError(error);
       }
@@ -289,22 +331,30 @@ function registerTools(options: {
   registerTool<SendResponseParams>(
     "send_response",
     {
-      description: "Send a response for the current session.",
+      description: "Send a response for a specific session_id.",
       inputSchema: sendResponseSchema,
     },
     async (params) => {
       try {
+        const sessionId = params.session_id?.trim();
+        if (!sessionId) {
+          throw new Error("session_id is required for send_response.");
+        }
         const resolvedName = agentName;
         if (!resolvedName) {
           throw new Error(
             "send_response needs a stored agent name. Call join_council (or start_council) once, then retry.",
           );
         }
-        const result = await service.sendResponse(
-          mapSendResponseInput({ content: params.content, agent_name: resolvedName }),
+        const result = await service.sendResponseToSession(
+          mapSendResponseToSessionInput({
+            session_id: sessionId,
+            content: params.content,
+            agent_name: resolvedName,
+          }),
         );
         const response = mapSendResponseResponse(result);
-        return toolOk("send_response", response);
+        return toolOk("send_response", response, { sessionId });
       } catch (error) {
         return toolError(error);
       }
@@ -396,7 +446,7 @@ function formatToolText(toolName: ToolName, payload: unknown, context: ToolConte
     case "join_council":
       return formatJoinCouncil(payload as GetCurrentSessionDataResponse);
     case "close_council":
-      return formatCloseCouncil();
+      return formatCloseCouncil(payload as CloseCouncilResponse);
     case "send_response":
       return formatSendResponse(payload as SendResponseResponse);
     case "summon_agent":
@@ -422,6 +472,7 @@ function formatJoinCouncil(response: GetCurrentSessionDataResponse): string {
 
   return [
     `Welcome to this council session ${response.agent_name}.`,
+    `Session: ${response.session_id}`,
     `We are gathered to weigh a matter set forth by ${requestAuthor}.`,
     "Request:",
     requestContent,
@@ -440,6 +491,7 @@ function formatGetCurrentSessionData(response: GetCurrentSessionDataResponse, co
     const conclusionAuthor = conclusion?.author ?? "none";
     const conclusionContent = conclusion?.content ?? "none";
     return [
+      `Session: ${response.session_id}`,
       `The council was convened by ${requestAuthor}.`,
       `Request: ${requestContent}`,
       "---",
@@ -451,6 +503,7 @@ function formatGetCurrentSessionData(response: GetCurrentSessionDataResponse, co
   const cursorLabel = context.cursor ?? "start";
   const cursorToken = response.next_cursor ?? "none";
   const lines = [
+    `Session: ${response.session_id}`,
     `The council was convened by ${requestAuthor}.`,
     `Request: ${requestContent}`,
     "---",
@@ -474,12 +527,16 @@ function formatGetCurrentSessionData(response: GetCurrentSessionDataResponse, co
   return lines.join("\n");
 }
 
-function formatCloseCouncil(): string {
-  return "The council is ended, and the matter is sealed.";
+function formatCloseCouncil(response: CloseCouncilResponse): string {
+  return [`The council is ended, and the matter is sealed.`, `Session: ${response.session_id}`].join("\n");
 }
 
 function formatSendResponse(response: SendResponseResponse): string {
-  return ["Your reply is set down.", `Your assigned name is: ${response.agent_name}`].join("\n");
+  return [
+    "Your reply is set down.",
+    `Your assigned name is: ${response.agent_name}`,
+    `Session: ${response.session_id}`,
+  ].join("\n");
 }
 
 function formatSummonAgent(response: SummonAgentResponse): string {

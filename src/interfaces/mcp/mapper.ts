@@ -19,6 +19,8 @@ import type {
 import type {
   CloseCouncilInput,
   CloseCouncilResult,
+  CloseSessionInput,
+  CloseSessionResult,
   CouncilConclusion,
   CouncilFeedback,
   CouncilParticipant,
@@ -27,12 +29,20 @@ import type {
   CouncilState,
   GetCurrentSessionDataInput,
   GetCurrentSessionDataResult,
+  GetSessionDataInput,
+  GetSessionDataResult,
   SendResponseInput,
   SendResponseResult,
   StartCouncilInput,
   StartCouncilResult,
 } from "../../core/services/council/types";
 import type { SummonAgentInput, SummonAgentResult } from "../../core/services/council/summon";
+
+type SendResponseToSessionInput = {
+  agentName: string;
+  sessionId: string;
+  content: string;
+};
 
 export function mapStartCouncilInput(params: StartCouncilParams & { agent_name: string }): StartCouncilInput {
   return {
@@ -50,9 +60,29 @@ export function mapGetCurrentSessionDataInput(
   };
 }
 
+export function mapGetSessionDataInput(
+  params: GetCurrentSessionDataParams & { agent_name: string; session_id: string },
+): GetSessionDataInput {
+  return {
+    agentName: params.agent_name,
+    sessionId: params.session_id,
+    cursor: params.cursor,
+  };
+}
+
 export function mapCloseCouncilInput(params: CloseCouncilParams & { agent_name: string }): CloseCouncilInput {
   return {
     agentName: params.agent_name,
+    conclusion: params.conclusion,
+  };
+}
+
+export function mapCloseSessionInput(
+  params: CloseCouncilParams & { agent_name: string; session_id: string },
+): CloseSessionInput {
+  return {
+    agentName: params.agent_name,
+    sessionId: params.session_id,
     conclusion: params.conclusion,
   };
 }
@@ -64,42 +94,56 @@ export function mapSendResponseInput(params: SendResponseParams & { agent_name: 
   };
 }
 
+export function mapSendResponseToSessionInput(
+  params: SendResponseParams & { agent_name: string; session_id: string },
+): SendResponseToSessionInput {
+  return {
+    agentName: params.agent_name,
+    sessionId: params.session_id,
+    content: params.content,
+  };
+}
+
 export function mapStartCouncilResponse(result: StartCouncilResult): StartCouncilResponse {
   return {
     agent_name: result.agentName,
     session_id: result.session.id,
     request_id: result.request.id,
-    state: mapCouncilState(result.state),
+    state: mapCouncilState(result.state, result.session.id),
   };
 }
 
-export function mapGetCurrentSessionDataResponse(result: GetCurrentSessionDataResult): GetCurrentSessionDataResponse {
+export function mapGetCurrentSessionDataResponse(
+  result: GetCurrentSessionDataResult | GetSessionDataResult,
+): GetCurrentSessionDataResponse {
+  const sessionId = result.session?.id ?? null;
   return {
     agent_name: result.agentName,
-    session_id: result.session?.id ?? null,
+    session_id: sessionId,
     request: result.request ? mapRequest(result.request) : null,
     feedback: result.feedback.map(mapFeedback),
     participant: mapParticipant(result.participant),
     next_cursor: result.nextCursor,
     pending_participants: result.pendingParticipants,
-    state: mapCouncilState(result.state),
+    state: mapCouncilState(result.state, sessionId),
   };
 }
 
-export function mapCloseCouncilResponse(result: CloseCouncilResult): CloseCouncilResponse {
+export function mapCloseCouncilResponse(result: CloseCouncilResult | CloseSessionResult): CloseCouncilResponse {
   return {
     agent_name: result.agentName,
     session_id: result.session.id,
     conclusion: mapConclusion(result.conclusion),
-    state: mapCouncilState(result.state),
+    state: mapCouncilState(result.state, result.session.id),
   };
 }
 
 export function mapSendResponseResponse(result: SendResponseResult): SendResponseResponse {
   return {
     agent_name: result.agentName,
+    session_id: result.feedback.sessionId,
     feedback: mapFeedback(result.feedback),
-    state: mapCouncilState(result.state),
+    state: mapCouncilState(result.state, result.feedback.sessionId),
   };
 }
 
@@ -118,24 +162,22 @@ export function mapSummonAgentResponse(result: SummonAgentResult): SummonAgentRe
   };
 }
 
-function mapCouncilState(state: CouncilState): CouncilStateDto {
-  const activeSession = state.activeSessionId
-    ? state.sessions.find((session) => session.id === state.activeSessionId)
-    : null;
-  const activeSessionId = activeSession?.id ?? null;
-  const activeRequests = activeSessionId
-    ? state.requests.filter((request) => request.sessionId === activeSessionId)
+function mapCouncilState(state: CouncilState, sessionId: string | null = state.activeSessionId): CouncilStateDto {
+  const session = sessionId ? state.sessions.find((entry) => entry.id === sessionId) : null;
+  const scopedSessionId = session?.id ?? null;
+  const activeRequests = scopedSessionId
+    ? state.requests.filter((request) => request.sessionId === scopedSessionId)
     : [];
-  const activeFeedback = activeSessionId
-    ? state.feedback.filter((feedback) => feedback.sessionId === activeSessionId)
+  const activeFeedback = scopedSessionId
+    ? state.feedback.filter((feedback) => feedback.sessionId === scopedSessionId)
     : [];
-  const activeParticipants = activeSessionId
-    ? state.participants.filter((participant) => participant.sessionId === activeSessionId)
+  const activeParticipants = scopedSessionId
+    ? state.participants.filter((participant) => participant.sessionId === scopedSessionId)
     : [];
 
   return {
     version: state.version,
-    session: activeSession ? mapSession(activeSession) : null,
+    session: session ? mapSession(session) : null,
     requests: activeRequests.map(mapRequest),
     feedback: activeFeedback.map(mapFeedback),
     participants: activeParticipants.map(mapParticipant),

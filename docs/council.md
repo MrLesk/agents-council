@@ -1,4 +1,4 @@
-# Council CLI (v1)
+# Council CLI (v2 Session-Targeted MCP)
 
 ## Overview
 
@@ -83,15 +83,15 @@ For implementation guidance, use:
 - `docs/ui-spec.md` as the canonical UI specification
 - `docs/ui-implementation-progress.md` as the parity tracker
 
-## Tools (v1)
+## Tools (v2)
 
 The MCP server exposes six tools:
 
 - `start_council` (starts a new session and records the council request)
-- `join_council` (first-time entry point that returns the session request and responses)
-- `get_current_session_data` (returns the session request and responses, optionally from a cursor)
-- `close_council` (closes the current session with a conclusion)
-- `send_response` (adds a response to the current request)
+- `join_council` (joins a specific session via `session_id` and returns request + responses)
+- `get_current_session_data` (returns data for a specific `session_id`, optionally from a cursor)
+- `close_council` (closes a specific `session_id` with a conclusion)
+- `send_response` (adds a response to a specific `session_id`)
 - `summon_agent` (summons a Claude or Codex agent into the active council)
 
 `summon_agent` inputs:
@@ -103,27 +103,43 @@ alphabetical default is used. When `model` is omitted, the saved settings are us
 
 Codex model defaults come from `~/.codex/config.toml` (`model = "..."`) unless you override the model in the summon call.
 
-`start_council` and `join_council` require an `agent_name` unless the server was started with
-`--agent-name/-n`. The server may append a suffix (`#1`, `#2`, ...) if the name is already in use;
-reuse the returned `agent_name` on subsequent calls. Structured responses include the resolved
-`agent_name`.
+`start_council` expects `request` and returns a new `session_id`. In v2, starting a council does **not**
+reset prior sessions; multiple sessions are retained and can be targeted explicitly.
 
-`start_council` expects a `request` input field for the council request text.
+`join_council` requires `session_id` and `agent_name` unless the server was started with `--agent-name/-n`.
+The server may append a suffix (`#1`, `#2`, ...) if the name is already in use in that session; reuse the
+returned `agent_name` on subsequent calls.
 
-When `--agent-name/-n` is set, tool inputs omit `agent_name` entirely and the server reuses the
-default for all calls. Without it, the resolved name from `start_council`/`join_council` is stored
-in memory for subsequent calls.
+`get_current_session_data`, `send_response`, and `close_council` require `session_id`.
 
-There is no `reset_session` tool in v1. Each `start_council` resets the session state
-by clearing requests, responses, and participants.
+When `--agent-name/-n` is set, tool inputs omit `agent_name` and the server reuses the default for all calls.
+Without it, the resolved name from `start_council`/`join_council` is stored in memory for subsequent calls.
+
+## Migration notes (implicit -> session-targeted)
+
+From v2 onward, callers must provide `session_id` when operating on an existing session:
+
+- `join_council`: now requires `session_id`
+- `get_current_session_data`: now requires `session_id`
+- `send_response`: now requires `session_id`
+- `close_council`: now requires `session_id`
+
+Migration flow:
+
+1. Call `start_council` and store returned `session_id`.
+2. Pass that `session_id` in all subsequent join/get/send/close calls for that conversation.
+3. Update error handling to expect explicit target errors:
+   - missing `session_id`
+   - `Session not found.`
+   - `Council session is closed.` / `Council session is already closed.`
 
 ## Initialization instructions
 
 On initialization, the server returns an `instructions` string that summarizes how to use the tools:
 - If you need feedback from other AI agents, start a council with `start_council`.
-- If you are requested to join the council, call `join_council`, read the request, and `send_response` as soon as possible.
-- Use `get_current_session_data` to poll for new responses; pass the cursor returned to fetch only newer messages.
-- Use `close_council` to end the current session with a conclusion.
+- If you are requested to join the council, call `join_council` with `session_id`, read the request, and `send_response` with the same `session_id` as soon as possible.
+- Use `get_current_session_data` with `session_id` to poll for new responses; pass the cursor returned to fetch only newer messages.
+- Use `close_council` with `session_id` to end that session with a conclusion.
 
 ## Response format
 
@@ -135,12 +151,14 @@ plain text for agents:
   - `Your assigned name is: <agent_name>`
 - `join_council`:
   - `Welcome to this council session <agent_name>.`
+  - `Session: <session_id>`
   - `We are gathered to weigh a matter set forth by <author_name>.`
   - `Request:`
   - `<request>`
   - `---`
   - `What say you, and with haste?`
 - `get_current_session_data` (active session):
+  - `Session: <session_id>`
   - `The council was convened by <created_by>.`
   - `Request: <request>`
   - `---`
@@ -153,6 +171,7 @@ plain text for agents:
   - `No further replies are heard for now. Return anon for more.`
   - `To hear only new replies, use the cursor: <cursor>`
 - `get_current_session_data` (closed session):
+  - `Session: <session_id>`
   - `The council was convened by <created_by>.`
   - `Request: <request>`
   - `---`
@@ -160,9 +179,11 @@ plain text for agents:
   - `Conclusion: <conclusion>`
 - `close_council`:
   - `The council is ended, and the matter is sealed.`
+  - `Session: <session_id>`
 - `send_response`:
   - `Your reply is set down.`
   - `Your assigned name is: <agent_name>`
+  - `Session: <session_id>`
 
 ## Compatibility
 
@@ -171,57 +192,73 @@ may change without legacy support; update clients alongside releases.
 
 ## Validation
 
-Manual multi-terminal (stdio + shared state):
+Manual MCP Inspector matrix (stdio + shared state):
 
 ```bash
-# terminal A
+# terminal A (create session A)
 npx -y @modelcontextprotocol/inspector --cli ./dist/council mcp --agent-name agent-a --method tools/call \
   --tool-name start_council --tool-arg request="Need feedback from the council." \
   --transport stdio
 ```
 
 ```bash
-# terminal B
-npx -y @modelcontextprotocol/inspector --cli ./dist/council mcp --agent-name agent-b --method tools/call \
-  --tool-name join_council --transport stdio
-```
-
-```bash
-# terminal B (polling boundary)
-npx -y @modelcontextprotocol/inspector --cli ./dist/council mcp --agent-name agent-b --method tools/call \
-  --tool-name get_current_session_data --tool-arg cursor=<response_id> \
-  --transport stdio
-```
-
-```bash
-# terminal C
-npx -y @modelcontextprotocol/inspector --cli ./dist/council mcp --agent-name agent-b --method tools/call \
-  --tool-name send_response --tool-arg content="Looks good." --transport stdio
-```
-
-```bash
-# terminal A (close the session)
+# terminal A (create session B)
 npx -y @modelcontextprotocol/inspector --cli ./dist/council mcp --agent-name agent-a --method tools/call \
-  --tool-name close_council --tool-arg conclusion="Consensus reached." --transport stdio
+  --tool-name start_council --tool-arg request="Need second council thread." \
+  --transport stdio
+```
+
+Capture `session_id` values from both start responses and use them below.
+
+```bash
+# terminal B (join explicit target A)
+npx -y @modelcontextprotocol/inspector --cli ./dist/council mcp --agent-name agent-b --method tools/call \
+  --tool-name join_council --tool-arg session_id=<session_a_id> --transport stdio
 ```
 
 ```bash
-# terminal B (view closed session)
+# terminal B (poll session A boundary)
 npx -y @modelcontextprotocol/inspector --cli ./dist/council mcp --agent-name agent-b --method tools/call \
-  --tool-name get_current_session_data --transport stdio
-```
-
-```bash
-# terminal B (poll for new responses)
-npx -y @modelcontextprotocol/inspector --cli ./dist/council mcp --agent-name agent-b --method tools/call \
-  --tool-name get_current_session_data --tool-arg cursor=<response_id> \
+  --tool-name get_current_session_data --tool-arg session_id=<session_a_id> --tool-arg cursor=<response_id> \
   --transport stdio
 ```
 
 ```bash
-# terminal A (json text format)
-npx -y @modelcontextprotocol/inspector --cli ./dist/council mcp --agent-name agent-a --format json --method tools/call \
-  --tool-name start_council --tool-arg request="Need feedback from the council." \
+# terminal C (send to session B)
+npx -y @modelcontextprotocol/inspector --cli ./dist/council mcp --agent-name agent-b --method tools/call \
+  --tool-name send_response --tool-arg session_id=<session_b_id> --tool-arg content="Looks good." --transport stdio
+```
+
+```bash
+# terminal A (close session A)
+npx -y @modelcontextprotocol/inspector --cli ./dist/council mcp --agent-name agent-a --method tools/call \
+  --tool-name close_council --tool-arg session_id=<session_a_id> --tool-arg conclusion="Consensus reached." --transport stdio
+```
+
+```bash
+# terminal B (read closed session A)
+npx -y @modelcontextprotocol/inspector --cli ./dist/council mcp --agent-name agent-b --method tools/call \
+  --tool-name get_current_session_data --tool-arg session_id=<session_a_id> --transport stdio
+```
+
+```bash
+# terminal B (closed-session mutation rejection)
+npx -y @modelcontextprotocol/inspector --cli ./dist/council mcp --agent-name agent-b --method tools/call \
+  --tool-name send_response --tool-arg session_id=<session_a_id> --tool-arg content="Late reply" \
+  --transport stdio
+```
+
+```bash
+# terminal B (missing session_id validation)
+npx -y @modelcontextprotocol/inspector --cli ./dist/council mcp --agent-name agent-b --method tools/call \
+  --tool-name get_current_session_data \
+  --transport stdio
+```
+
+```bash
+# terminal B (invalid session_id validation)
+npx -y @modelcontextprotocol/inspector --cli ./dist/council mcp --agent-name agent-b --method tools/call \
+  --tool-name join_council --tool-arg session_id=missing-session \
   --transport stdio
 ```
 

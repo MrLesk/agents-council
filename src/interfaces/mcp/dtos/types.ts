@@ -56,10 +56,12 @@ export type StartCouncilResponse = {
 };
 
 export type GetCurrentSessionDataParams = {
+  session_id?: string;
   cursor?: string;
 };
 
 export type JoinCouncilParams = {
+  session_id?: string;
   agent_name?: string;
 };
 
@@ -75,6 +77,7 @@ export type GetCurrentSessionDataResponse = {
 };
 
 export type CloseCouncilParams = {
+  session_id?: string;
   conclusion: string;
 };
 
@@ -86,11 +89,13 @@ export type CloseCouncilResponse = {
 };
 
 export type SendResponseParams = {
+  session_id?: string;
   content: string;
 };
 
 export type SendResponseResponse = {
   agent_name: string;
+  session_id: string;
   feedback: FeedbackDto;
   state: CouncilStateDto;
 };
