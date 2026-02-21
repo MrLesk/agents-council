@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "skills": {
+    "backlog-technical-project-manager": {
+      "source": "mrlesk/backlog.md",
+      "sourceType": "github",
+      "computedHash": "dede31d281d1bb78609df2bc21320096d1fe284560fcbac323ce0be66e3b03a3"
+    },
+    "context-hunter": {
+      "source": "mrlesk/backlog.md",
+      "sourceType": "github",
+      "computedHash": "67dfe253607c178211b26f0f4da792db955ff808dd3063abea01abd610fb98c1"
+    }
+  }
+}
