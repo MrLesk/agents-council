@@ -119,12 +119,26 @@ export function mapSummonAgentResponse(result: SummonAgentResult): SummonAgentRe
 }
 
 function mapCouncilState(state: CouncilState): CouncilStateDto {
+  const activeSession = state.activeSessionId
+    ? state.sessions.find((session) => session.id === state.activeSessionId)
+    : null;
+  const activeSessionId = activeSession?.id ?? null;
+  const activeRequests = activeSessionId
+    ? state.requests.filter((request) => request.sessionId === activeSessionId)
+    : [];
+  const activeFeedback = activeSessionId
+    ? state.feedback.filter((feedback) => feedback.sessionId === activeSessionId)
+    : [];
+  const activeParticipants = activeSessionId
+    ? state.participants.filter((participant) => participant.sessionId === activeSessionId)
+    : [];
+
   return {
     version: state.version,
-    session: state.session ? mapSession(state.session) : null,
-    requests: state.requests.map(mapRequest),
-    feedback: state.feedback.map(mapFeedback),
-    participants: state.participants.map(mapParticipant),
+    session: activeSession ? mapSession(activeSession) : null,
+    requests: activeRequests.map(mapRequest),
+    feedback: activeFeedback.map(mapFeedback),
+    participants: activeParticipants.map(mapParticipant),
   };
 }
 

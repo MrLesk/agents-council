@@ -12,8 +12,14 @@ import type {
   CouncilState,
   GetCurrentSessionDataInput,
   GetCurrentSessionDataResult,
+  GetSessionDataInput,
+  GetSessionDataResult,
+  ListSessionsInput,
+  ListSessionsResult,
   SendResponseInput,
   SendResponseResult,
+  SetActiveSessionInput,
+  SetActiveSessionResult,
   StartCouncilInput,
   StartCouncilResult,
 } from "./types";
@@ -23,6 +29,9 @@ export interface CouncilService {
   getCurrentSessionData(input: GetCurrentSessionDataInput): Promise<GetCurrentSessionDataResult>;
   closeCouncil(input: CloseCouncilInput): Promise<CloseCouncilResult>;
   sendResponse(input: SendResponseInput): Promise<SendResponseResult>;
+  listSessions(input?: ListSessionsInput): Promise<ListSessionsResult>;
+  getSessionData(input: GetSessionDataInput): Promise<GetSessionDataResult>;
+  setActiveSession(input: SetActiveSessionInput): Promise<SetActiveSessionResult>;
 }
 
 export class CouncilServiceImpl implements CouncilService {
@@ -32,21 +41,30 @@ export class CouncilServiceImpl implements CouncilService {
     return this.store.update((state) => {
       const now = nowIso();
       const session = createSession(now);
-      const { agentName } = resolveAgentName([], input.agentName, { allowReuse: true });
+      const { agentName } = resolveAgentName(getParticipantsForSession(state, session.id), input.agentName, {
+        allowReuse: true,
+      });
       const requestId = randomUUID();
       const request: CouncilRequest = {
         id: requestId,
+        sessionId: session.id,
         content: input.request,
         createdBy: agentName,
         createdAt: now,
         status: "open",
       };
 
-      const { participants, participant } = updateParticipant([], agentName, now, (candidate) => ({
-        ...candidate,
-        lastSeen: now,
-        lastRequestSeen: requestId,
-      }));
+      const { participants, participant } = updateParticipant(
+        state.participants,
+        session.id,
+        agentName,
+        now,
+        (candidate) => ({
+          ...candidate,
+          lastSeen: now,
+          lastRequestSeen: requestId,
+        }),
+      );
 
       const nextSession: CouncilSession = {
         ...session,
@@ -56,9 +74,9 @@ export class CouncilServiceImpl implements CouncilService {
 
       const nextState: CouncilState = {
         ...state,
-        session: nextSession,
-        requests: [request],
-        feedback: [],
+        activeSessionId: nextSession.id,
+        sessions: [...state.sessions, nextSession],
+        requests: [...state.requests, request],
         participants,
       };
 
@@ -76,12 +94,29 @@ export class CouncilServiceImpl implements CouncilService {
 
   async getCurrentSessionData(input: GetCurrentSessionDataInput): Promise<GetCurrentSessionDataResult> {
     const state = await this.store.load();
+    const session = getActiveSession(state);
     const now = nowIso();
-    const { agentName } = resolveAgentName(state.participants, input.agentName, {
+
+    if (!session) {
+      const { agentName } = resolveAgentName([], input.agentName, { allowReuse: true });
+      return {
+        agentName,
+        session: null,
+        request: null,
+        feedback: [],
+        participant: createTransientParticipant(agentName, now),
+        nextCursor: input.cursor ?? null,
+        pendingParticipants: [],
+        state,
+      };
+    }
+
+    const { agentName } = resolveAgentName(getParticipantsForSession(state, session.id), input.agentName, {
       allowReuse: true,
     });
     const { nextState, participant, request, feedback, nextCursor, pendingParticipants } = buildSessionData(
       state,
+      session.id,
       agentName,
       input.cursor,
       now,
@@ -89,7 +124,7 @@ export class CouncilServiceImpl implements CouncilService {
 
     return {
       agentName: participant.agentName,
-      session: state.session,
+      session,
       request,
       feedback,
       participant,
@@ -101,7 +136,7 @@ export class CouncilServiceImpl implements CouncilService {
 
   async closeCouncil(input: CloseCouncilInput): Promise<CloseCouncilResult> {
     return this.store.update((state) => {
-      const session = state.session;
+      const session = getActiveSession(state);
       if (!session) {
         throw new Error("No active session.");
       }
@@ -110,31 +145,40 @@ export class CouncilServiceImpl implements CouncilService {
       }
 
       const now = nowIso();
-      const { agentName } = resolveAgentName(state.participants, input.agentName, { allowReuse: true });
+      const { agentName } = resolveAgentName(getParticipantsForSession(state, session.id), input.agentName, {
+        allowReuse: true,
+      });
       const conclusion: CouncilConclusion = {
         author: agentName,
         content: input.conclusion,
         createdAt: now,
       };
-      const request = getCurrentRequest(state);
+      const request = getCurrentRequestForSession(state, session.id);
       const updatedSession: CouncilSession = {
         ...session,
         status: "closed",
         conclusion,
       };
+      const updatedSessions = state.sessions.map((item) => (item.id === updatedSession.id ? updatedSession : item));
       const updatedRequests: CouncilRequest[] = request
         ? state.requests.map((item) => (item.id === request.id ? { ...item, status: "closed" } : item))
         : state.requests;
-      const lastFeedback = state.feedback.at(-1);
-      const { participants, participant } = updateParticipant(state.participants, agentName, now, (candidate) => ({
-        ...candidate,
-        lastSeen: now,
-        lastRequestSeen: request ? request.id : candidate.lastRequestSeen,
-        lastFeedbackSeen: lastFeedback ? lastFeedback.id : candidate.lastFeedbackSeen,
-      }));
+      const lastFeedback = getFeedbackForSession(state, session.id).at(-1);
+      const { participants, participant } = updateParticipant(
+        state.participants,
+        session.id,
+        agentName,
+        now,
+        (candidate) => ({
+          ...candidate,
+          lastSeen: now,
+          lastRequestSeen: request ? request.id : candidate.lastRequestSeen,
+          lastFeedbackSeen: lastFeedback ? lastFeedback.id : candidate.lastFeedbackSeen,
+        }),
+      );
       const nextState: CouncilState = {
         ...state,
-        session: updatedSession,
+        sessions: updatedSessions,
         requests: updatedRequests,
         participants,
       };
@@ -152,35 +196,146 @@ export class CouncilServiceImpl implements CouncilService {
   }
 
   async sendResponse(input: SendResponseInput): Promise<SendResponseResult> {
+    return this.sendResponseToSession({
+      agentName: input.agentName,
+      content: input.content,
+      sessionId: null,
+    });
+  }
+
+  async listSessions(input: ListSessionsInput = {}): Promise<ListSessionsResult> {
+    const state = await this.store.load();
+    const status = input.status ?? "all";
+    const sessions = sortSessionsForListing(state.sessions, state.activeSessionId).filter((session) => {
+      if (status === "all") {
+        return true;
+      }
+      return session.status === status;
+    });
+
+    return {
+      activeSessionId: state.activeSessionId,
+      sessions,
+      state,
+    };
+  }
+
+  async getSessionData(input: GetSessionDataInput): Promise<GetSessionDataResult> {
+    const state = await this.store.load();
+    const session = findSessionById(state, input.sessionId);
+    if (!session) {
+      throw new Error("Session not found.");
+    }
+
+    const now = nowIso();
+    const { agentName } = resolveAgentName(getParticipantsForSession(state, session.id), input.agentName, {
+      allowReuse: true,
+    });
+    const { nextState, participant, request, feedback, nextCursor, pendingParticipants } = buildSessionData(
+      state,
+      session.id,
+      agentName,
+      input.cursor,
+      now,
+    );
+
+    return {
+      agentName: participant.agentName,
+      session,
+      request,
+      feedback,
+      participant,
+      nextCursor,
+      pendingParticipants,
+      state: nextState,
+    };
+  }
+
+  async setActiveSession(input: SetActiveSessionInput): Promise<SetActiveSessionResult> {
     return this.store.update((state) => {
-      const session = state.session;
+      const session = findSessionById(state, input.sessionId);
+      if (!session) {
+        throw new Error("Session not found.");
+      }
+
+      const now = nowIso();
+      const { agentName } = resolveAgentName(getParticipantsForSession(state, session.id), input.agentName, {
+        allowReuse: true,
+      });
+      const { participants, participant } = updateParticipant(
+        state.participants,
+        session.id,
+        agentName,
+        now,
+        (candidate) => ({
+          ...candidate,
+          lastSeen: now,
+          lastRequestSeen: session.currentRequestId ?? candidate.lastRequestSeen,
+        }),
+      );
+
+      const nextState: CouncilState = {
+        ...state,
+        activeSessionId: session.id,
+        participants,
+      };
+
+      return {
+        state: nextState,
+        result: {
+          agentName: participant.agentName,
+          session,
+          participant,
+          state: nextState,
+        },
+      };
+    });
+  }
+
+  async sendResponseToSession(input: {
+    agentName: string;
+    content: string;
+    sessionId: string | null;
+  }): Promise<SendResponseResult> {
+    return this.store.update((state) => {
+      const session = input.sessionId ? findSessionById(state, input.sessionId) : getActiveSession(state);
       if (!session) {
         throw new Error("No active session.");
       }
       if (session.status === "closed") {
         throw new Error("Council session is closed.");
       }
-      const request = getCurrentRequest(state);
+
+      const request = getCurrentRequestForSession(state, session.id);
       if (!request) {
         throw new Error("No active request.");
       }
 
       const now = nowIso();
-      const { agentName } = resolveAgentName(state.participants, input.agentName, { allowReuse: true });
+      const { agentName } = resolveAgentName(getParticipantsForSession(state, session.id), input.agentName, {
+        allowReuse: true,
+      });
       const feedback: CouncilFeedback = {
         id: randomUUID(),
+        sessionId: session.id,
         requestId: request.id,
         author: agentName,
         content: input.content,
         createdAt: now,
       };
 
-      const { participants, participant } = updateParticipant(state.participants, agentName, now, (candidate) => ({
-        ...candidate,
-        lastSeen: now,
-        lastRequestSeen: request.id,
-        lastFeedbackSeen: feedback.id,
-      }));
+      const { participants, participant } = updateParticipant(
+        state.participants,
+        session.id,
+        agentName,
+        now,
+        (candidate) => ({
+          ...candidate,
+          lastSeen: now,
+          lastRequestSeen: request.id,
+          lastFeedbackSeen: feedback.id,
+        }),
+      );
 
       const nextState: CouncilState = {
         ...state,
@@ -214,17 +369,39 @@ function createSession(createdAt: string): CouncilSession {
   };
 }
 
-function getCurrentRequest(state: CouncilState): CouncilRequest | null {
-  const currentId = state.session?.currentRequestId;
+export function findSessionById(state: CouncilState, sessionId: string): CouncilSession | null {
+  return state.sessions.find((session) => session.id === sessionId) ?? null;
+}
+
+export function getActiveSession(state: CouncilState): CouncilSession | null {
+  const sessionId = state.activeSessionId;
+  if (!sessionId) {
+    return null;
+  }
+  return findSessionById(state, sessionId);
+}
+
+export function getCurrentRequestForSession(state: CouncilState, sessionId: string): CouncilRequest | null {
+  const session = findSessionById(state, sessionId);
+  const currentId = session?.currentRequestId;
   if (!currentId) {
     return null;
   }
 
-  return state.requests.find((request) => request.id === currentId) ?? null;
+  return state.requests.find((request) => request.id === currentId && request.sessionId === sessionId) ?? null;
+}
+
+export function getFeedbackForSession(state: CouncilState, sessionId: string): CouncilFeedback[] {
+  return state.feedback.filter((entry) => entry.sessionId === sessionId);
+}
+
+export function getParticipantsForSession(state: CouncilState, sessionId: string): CouncilParticipant[] {
+  return state.participants.filter((entry) => entry.sessionId === sessionId);
 }
 
 function buildSessionData(
   state: CouncilState,
+  sessionId: string,
   agentName: string,
   cursor: string | undefined,
   now: string,
@@ -237,25 +414,31 @@ function buildSessionData(
   pendingParticipants: string[];
 } {
   const effectiveCursor = cursor ?? null;
-  const request = getCurrentRequest(state);
-  const feedback = sliceAfterId(state.feedback, effectiveCursor);
+  const request = getCurrentRequestForSession(state, sessionId);
+  const allFeedback = getFeedbackForSession(state, sessionId);
+  const feedback = sliceAfterId(allFeedback, effectiveCursor);
   const lastFeedback = feedback.at(-1);
   const nextCursor = lastFeedback ? lastFeedback.id : effectiveCursor;
 
-  const { participants, participant } = updateParticipant(state.participants, agentName, now, (candidate) => ({
-    ...candidate,
-    lastSeen: now,
-    lastRequestSeen: request ? request.id : candidate.lastRequestSeen,
-    lastFeedbackSeen: nextCursor,
-  }));
+  const { participants, participant } = updateParticipant(
+    state.participants,
+    sessionId,
+    agentName,
+    now,
+    (candidate) => ({
+      ...candidate,
+      lastSeen: now,
+      lastRequestSeen: request ? request.id : candidate.lastRequestSeen,
+      lastFeedbackSeen: nextCursor,
+    }),
+  );
 
   const allPending = computePendingParticipants(
-    participants,
-    state.feedback,
+    getParticipantsForSession({ ...state, participants }, sessionId),
+    allFeedback,
     request?.id ?? null,
     request?.createdBy ?? null,
   );
-  // Exclude the polling agent from pending list - they shouldn't see themselves as "thinking"
   const pendingParticipants = allPending.filter((name) => name !== agentName);
 
   return {
@@ -280,13 +463,13 @@ function computePendingParticipants(
   if (!currentRequestId) {
     return [];
   }
-  const feedbackForRequest = allFeedback.filter((f) => f.requestId === currentRequestId);
-  const authorsWithFeedback = new Set(feedbackForRequest.map((f) => f.author));
-  // Exclude request creator - they contributed via the request itself
+  const feedbackForRequest = allFeedback.filter((entry) => entry.requestId === currentRequestId);
+  const authorsWithFeedback = new Set(feedbackForRequest.map((entry) => entry.author));
   if (requestCreator) {
     authorsWithFeedback.add(requestCreator);
   }
-  return participants.filter((p) => !authorsWithFeedback.has(p.agentName)).map((p) => p.agentName);
+
+  return participants.filter((entry) => !authorsWithFeedback.has(entry.agentName)).map((entry) => entry.agentName);
 }
 
 function sliceAfterId<T extends { id: string }>(items: T[], lastSeenId: string | null): T[] {
@@ -333,15 +516,19 @@ function nextAvailableAgentName(participants: CouncilParticipant[], requestedNam
 
 export function updateParticipant(
   participants: CouncilParticipant[],
+  sessionId: string,
   agentName: string,
   now: string,
   updater: (participant: CouncilParticipant) => CouncilParticipant,
 ): { participants: CouncilParticipant[]; participant: CouncilParticipant } {
-  const index = participants.findIndex((participant) => participant.agentName === agentName);
+  const index = participants.findIndex(
+    (participant) => participant.sessionId === sessionId && participant.agentName === agentName,
+  );
   const baseParticipant =
     index >= 0 && participants[index]
       ? participants[index]
       : {
+          sessionId,
           agentName,
           lastSeen: now,
           lastRequestSeen: null,
@@ -354,4 +541,37 @@ export function updateParticipant(
       : [...participants, updated];
 
   return { participants: nextParticipants, participant: updated };
+}
+
+function createTransientParticipant(agentName: string, now: string): CouncilParticipant {
+  return {
+    sessionId: "",
+    agentName,
+    lastSeen: now,
+    lastRequestSeen: null,
+    lastFeedbackSeen: null,
+  };
+}
+
+export function sortSessionsForListing(sessions: CouncilSession[], activeSessionId: string | null): CouncilSession[] {
+  return [...sessions].sort((left, right) => {
+    const leftActiveRank = left.id === activeSessionId ? 0 : 1;
+    const rightActiveRank = right.id === activeSessionId ? 0 : 1;
+    if (leftActiveRank !== rightActiveRank) {
+      return leftActiveRank - rightActiveRank;
+    }
+
+    const leftStatusRank = left.status === "active" ? 0 : 1;
+    const rightStatusRank = right.status === "active" ? 0 : 1;
+    if (leftStatusRank !== rightStatusRank) {
+      return leftStatusRank - rightStatusRank;
+    }
+
+    const createdAtCompare = right.createdAt.localeCompare(left.createdAt);
+    if (createdAtCompare !== 0) {
+      return createdAtCompare;
+    }
+
+    return left.id.localeCompare(right.id);
+  });
 }
