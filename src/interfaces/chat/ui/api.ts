@@ -5,6 +5,7 @@ import type {
   CouncilStateChangedEvent,
   GetCurrentSessionDataPayload,
   JoinCouncilPayload,
+  SetActiveSessionPayload,
   SendResponsePayload,
   StartCouncilPayload,
   SummonAgentPayload,
@@ -15,6 +16,7 @@ import type {
   CloseCouncilResponse,
   GetCurrentSessionDataResponse,
   GlobalSettingsResponse,
+  ListSessionsResponse,
   SendResponseResponse,
   StartCouncilResponse,
   SummonAgentResponse,
@@ -109,6 +111,27 @@ export async function getCurrentSessionData(agentName: string): Promise<GetCurre
     path: "/get-current-session-data",
     payload,
     bridgeCall: (bridge) => bridge.getCurrentSessionData(payload),
+  });
+}
+
+export async function listSessions(): Promise<ListSessionsResponse> {
+  return callBridgeOrHttp({
+    path: "/list-sessions",
+    payload: {},
+    bridgeCall: (bridge) => bridge.listSessions(),
+  });
+}
+
+export async function setActiveSession(agentName: string, sessionId: string): Promise<GetCurrentSessionDataResponse> {
+  const payload: SetActiveSessionPayload = {
+    agent_name: agentName,
+    session_id: sessionId,
+  };
+
+  return callBridgeOrHttp({
+    path: "/set-active-session",
+    payload,
+    bridgeCall: (bridge) => bridge.setActiveSession(payload),
   });
 }
 

@@ -10,7 +10,9 @@ import {
   getSettingsAction,
   getSummonSettingsAction,
   joinCouncilAction,
+  listSessionsAction,
   sendResponseAction,
+  setActiveSessionAction,
   startCouncilAction,
   summonAgentAction,
   updateSettingsAction,
@@ -55,6 +57,7 @@ describe("chat bridge actions", () => {
         request: "Need focused council feedback",
       });
       expect(started.state.session?.status).toBe("active");
+      const firstSessionId = started.session_id;
 
       const joined = await joinCouncilAction({ agent_name: "advisor" });
       expect(joined.session_id).toBe(started.session_id);
@@ -74,6 +77,23 @@ describe("chat bridge actions", () => {
       });
       expect(closed.state.session?.status).toBe("closed");
       expect(closed.conclusion.content).toBe("Consensus reached.");
+
+      const second = await startCouncilAction({
+        agent_name: "host",
+        request: "Second matter for the council archive.",
+      });
+      expect(second.session_id).not.toBe(firstSessionId);
+
+      const sessions = await listSessionsAction({});
+      expect(sessions.sessions.length).toBeGreaterThanOrEqual(2);
+      expect(sessions.active_session_id).toBe(second.session_id);
+
+      const switched = await setActiveSessionAction({
+        agent_name: "advisor",
+        session_id: firstSessionId,
+      });
+      expect(switched.session_id).toBe(firstSessionId);
+      expect(switched.state.session?.status).toBe("closed");
     });
   });
 
@@ -126,6 +146,12 @@ describe("chat bridge actions", () => {
       const summonSettings = await getSummonSettingsAction();
       expect(summonSettings.supported_agents).toContain("Claude");
       expect(summonSettings.supported_agents).toContain("Codex");
+      expect(
+        typeof summonSettings.claude_code_version === "string" || summonSettings.claude_code_version === null,
+      ).toBe(true);
+      expect(typeof summonSettings.codex_cli_version === "string" || summonSettings.codex_cli_version === null).toBe(
+        true,
+      );
 
       const summonSettingsAfterUpdate = await updateSummonSettingsAction({
         agent: "Codex",
@@ -133,6 +159,7 @@ describe("chat bridge actions", () => {
         reasoning_effort: null,
       });
       expect(summonSettingsAfterUpdate.last_used_agent).toBe("Codex");
+      expect(summonSettingsAfterUpdate.agents.Codex?.reasoning_effort).toBeNull();
 
       await expect(summonAgentAction({ agent: "NotSupportedAgent" })).rejects.toThrow("Unsupported agent.");
     });

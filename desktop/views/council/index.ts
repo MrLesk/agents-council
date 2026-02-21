@@ -6,6 +6,7 @@ import type {
   CloseCouncilPayload,
   GetCurrentSessionDataPayload,
   JoinCouncilPayload,
+  SetActiveSessionPayload,
   SendResponsePayload,
   StartCouncilPayload,
   SummonAgentPayload,
@@ -39,6 +40,12 @@ const bridge: CouncilDesktopBridge = {
   },
   getCurrentSessionData(payload: GetCurrentSessionDataPayload) {
     return electroview.rpc.request.getCurrentSessionData(payload);
+  },
+  listSessions() {
+    return electroview.rpc.request.listSessions({});
+  },
+  setActiveSession(payload: SetActiveSessionPayload) {
+    return electroview.rpc.request.setActiveSession(payload);
   },
   sendResponse(payload: SendResponsePayload) {
     return electroview.rpc.request.sendResponse(payload);

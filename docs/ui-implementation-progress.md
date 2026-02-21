@@ -21,22 +21,20 @@ Use this file to decide where new UI features should be implemented and what mus
 
 | Area | Canonical Behavior | Production Status | Notes |
 |------|--------------------|-------------------|-------|
-| App shell | Two-pane layout with persistent session sidebar + hall | Missing | Current production UI is single-column hall without canonical sidebar. |
-| Session navigation | Sidebar session list, active marker, archive section | Missing | Requires session list model and sidebar rendering. |
-| Session creation CTA | `Spawn Session` from sidebar | Missing | Production starts from gate + active session flow. |
-| Hall header | Session title + live status + avatar stack + summon CTA | Partial | Header exists, but does not use canonical avatar-stack/session title pattern. |
-| Message rendering | Bubble-style per-agent cards (`MessageBubble`) with text/code/system modes | Partial | Production uses markdown cards and pending placeholders; canonical bubble contract differs. |
-| Composer behavior | Enter to send, Shift+Enter newline, footer hint | Partial | Enter/Shift+Enter behavior and compact composer style not fully mirrored. |
-| Summon modal UX | Header summon entry, selectable agent list modal | Partial | Summon modal exists but model/agent settings UX differs from canonical agency interaction. |
-| Visual token system | Agency palette, typography (`Cinzel` + `Lato`), stone/amber theme | Partial | Production uses redesign-themed tokens but not the exact canonical token system. |
-| Motion/feedback | `motion/react` transitions, typing pulse, toast feedback | Partial | Production has animations and feedback, but not fully aligned to canonical motion contracts. |
+| App shell | Two-pane layout with persistent session sidebar + hall | Aligned | Desktop renderer now uses canonical sidebar + hall split (`CouncilSidebar` + `CouncilHall`). |
+| Session navigation | Sidebar session list, active marker, archive section | Aligned | Session chronicle is sourced from real multi-session bridge APIs with active/archived grouping. |
+| Session creation CTA | `Spawn Session` from sidebar | Aligned | Sidebar `Spawn Session` opens council-start modal and creates/selects live sessions. |
+| Hall header | Session title + live status + avatar stack + summon CTA | Aligned | Hall header now renders session title/state, participant stack, and summon CTA in canonical structure. |
+| Message rendering | Bubble-style per-agent cards (`MessageBubble`) with text/code/system modes | Aligned | Message stream uses canonical bubble contract with per-agent styling and system notices. |
+| Composer behavior | Enter to send, Shift+Enter newline, footer hint | Aligned | Composer supports Enter send + Shift+Enter newline with explicit footer hint. |
+| Summon modal UX | Header summon entry, selectable agent list modal | Aligned | Summon modal remains fully wired to agent/model/reasoning controls and version visibility. |
+| Visual token system | Agency palette, typography (`Cinzel` + `Lato`), stone/amber theme | Aligned | Production theme now uses canonical font pair and stone/amber visual language for shell and panels. |
+| Motion/feedback | `motion/react` transitions, typing pulse, toast feedback | Partial | Interaction feedback is present (pending/system updates), but motion-specific parity remains intentionally restrained in runtime implementation. |
 
 ## Immediate Alignment Priorities
 
-1. Implement canonical shell architecture (sidebar + hall split) before adding major UI features.
-2. Normalize message rendering contract to canonical message modes (`text`, `code`, `system`).
-3. Align summon UX flow and entry points with canonical modal model.
-4. Align typography and component-level token usage to canonical sources.
+1. Keep bridge/API compatibility stable while TASK-26.7 finalizes packaging/release automation for desktop artifacts.
+2. Expand optional motion polish only if runtime performance/packaging constraints remain unaffected.
 
 ## Change Control
 

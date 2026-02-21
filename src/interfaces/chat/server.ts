@@ -11,8 +11,10 @@ import {
   getSettingsAction,
   getSummonSettingsAction,
   joinCouncilAction,
+  listSessionsAction,
   refreshSummonModelsAction,
   sendResponseAction,
+  setActiveSessionAction,
   startCouncilAction,
   summonAgentAction,
   updateSettingsAction,
@@ -66,6 +68,10 @@ export function startChatServer(options: ChatServerOptions): ChatServer {
                 return await handleJsonAction(req, joinCouncilAction);
               case "/get-current-session-data":
                 return await handleJsonAction(req, getCurrentSessionDataAction);
+              case "/list-sessions":
+                return Response.json(await listSessionsAction({}));
+              case "/set-active-session":
+                return await handleJsonAction(req, setActiveSessionAction);
               case "/send-response":
                 return await handleJsonAction(req, sendResponseAction);
               case "/close-council":

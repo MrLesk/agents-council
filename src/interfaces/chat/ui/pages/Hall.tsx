@@ -1,40 +1,18 @@
-import { type ChangeEvent, useCallback, useEffect, useRef, useState } from "react";
-import MarkdownPreview, { type MarkdownPreviewProps } from "@uiw/react-markdown-preview";
+import { type ChangeEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 import { Settings } from "../components/Settings";
+import { CouncilHall } from "../components/CouncilHall";
+import { CouncilSidebar } from "../components/CouncilSidebar";
+import type { HallAgentType, HallMessage } from "../components/MessageBubble";
 import { getSummonSettings, refreshSummonModels, summonAgent, updateSummonSettings } from "../api";
 import type { CouncilContext } from "../hooks/useCouncil";
 import type { SummonModelInfoDto, SummonSettingsResponse } from "../types";
 
-type AgentType = "claude" | "codex" | "gemini" | "human" | "other";
-
-const AGENT_SIGILS: Record<AgentType, string> = {
-  claude: "◈",
-  codex: "◆",
-  gemini: "✦",
-  human: "●",
-  other: "○",
+type HallProps = {
+  name: string;
+  council: CouncilContext;
+  onNameChange: (name: string) => void;
 };
-
-function getAgentType(name: string): AgentType {
-  const lower = name.toLowerCase();
-  if (lower.includes("claude")) return "claude";
-  if (lower.includes("codex")) return "codex";
-  if (lower.includes("gemini")) return "gemini";
-  if (lower.includes("human")) return "human";
-  return "other";
-}
-
-function AgentBadge({ name }: { name: string }) {
-  const agentType = getAgentType(name);
-  const sigil = AGENT_SIGILS[agentType];
-  return (
-    <span className="agent-badge">
-      <span className={`agent-sigil agent-${agentType}`}>{sigil}</span>
-      <span className={`agent-name agent-${agentType}`}>{name}</span>
-    </span>
-  );
-}
 
 function formatSummonModelLabel(model: SummonModelInfoDto): string {
   return model.display_name.trim() || model.value;
@@ -54,48 +32,23 @@ function resolveReasoningEffort(model: SummonModelInfoDto | null, savedEffort: s
   return model.default_reasoning_effort || options[0]?.reasoning_effort || "";
 }
 
-type HallProps = {
-  name: string;
-  council: CouncilContext;
-  onNameChange: (name: string) => void;
-};
-
-const filterMarkdownPlugins: NonNullable<MarkdownPreviewProps["pluginsFilter"]> = (type, plugins) => {
-  if (type !== "rehype") {
-    return plugins;
-  }
-
-  return plugins.filter((plugin) => {
-    const candidate = Array.isArray(plugin) ? plugin[0] : plugin;
-    if (typeof candidate !== "function") {
-      return true;
-    }
-    return candidate.name !== "rehypeRaw";
-  });
-};
-
 export function Hall({ name, council, onNameChange }: HallProps) {
+  const [showSettings, setShowSettings] = useState(false);
+  const [showStartModal, setShowStartModal] = useState(false);
+  const [showSummonAgent, setShowSummonAgent] = useState(false);
   const [requestDraft, setRequestDraft] = useState("");
   const [responseDraft, setResponseDraft] = useState("");
   const [conclusionDraft, setConclusionDraft] = useState("");
-  const [showSettings, setShowSettings] = useState(false);
-  const [showSummon, setShowSummon] = useState(false);
-  const [showSummonAgent, setShowSummonAgent] = useState(false);
   const [summonSettings, setSummonSettings] = useState<SummonSettingsResponse | null>(null);
   const [summonAgentName, setSummonAgentName] = useState("");
   const [summonModel, setSummonModel] = useState("");
   const [summonReasoningEffort, setSummonReasoningEffort] = useState("");
   const [summonBusy, setSummonBusy] = useState(false);
-  const [localPendingAgents, setLocalPendingAgents] = useState<string[]>([]);
   const [refreshingModels, setRefreshingModels] = useState(false);
   const [summonError, setSummonError] = useState<string | null>(null);
   const [summonNotice, setSummonNotice] = useState<string | null>(null);
   const [summonFailure, setSummonFailure] = useState<{ agent: string; message: string } | null>(null);
-  const [hasNewMessages, setHasNewMessages] = useState(false);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const messagesContainerRef = useRef<HTMLDivElement>(null);
-  const prevFeedbackLengthRef = useRef(0);
-  const refreshNoticeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [localPendingAgents, setLocalPendingAgents] = useState<string[]>([]);
 
   const {
     connection,
@@ -103,7 +56,8 @@ export function Hall({ name, council, onNameChange }: HallProps) {
     error,
     notice,
     sessionStatus,
-    hallState,
+    sessions,
+    activeSessionId,
     currentRequest,
     feedback,
     pendingParticipants,
@@ -111,17 +65,14 @@ export function Hall({ name, council, onNameChange }: HallProps) {
     start,
     send,
     close,
+    selectSession,
   } = council;
 
-  const isActive = hallState === "active";
-  const isIdle = hallState === "idle";
   const canCloseCouncil = canClose(name);
-  const isCreator = Boolean(currentRequest && currentRequest.created_by === name);
-  const hasSpoken = Boolean(
-    currentRequest && feedback.some((entry) => entry.request_id === currentRequest.id && entry.author === name),
-  );
-  const speakLabel = !isCreator && !hasSpoken ? "Join and speak" : "Speak";
-  const summonLabel = currentRequest ? "Summon a New Council" : "Summon the Council";
+  const selectedSession = sessions.find((session) => session.id === activeSessionId) ?? null;
+  const sessionTitle = selectedSession?.title ?? deriveSessionTitle(currentRequest?.content ?? "");
+  const currentRequestId = currentRequest?.id ?? null;
+
   const summonModels = summonSettings?.supported_models_by_agent[summonAgentName] ?? [];
   const hasSummonModels = summonModels.length > 0;
   const isCodexAgent = summonAgentName === "Codex";
@@ -135,51 +86,53 @@ export function Hall({ name, council, onNameChange }: HallProps) {
   const selectReasoningValue = allowReasoningOverride ? summonReasoningEffort : "";
   const missingSummonModel =
     summonModel.trim().length > 0 ? !summonModels.some((model) => model.value === summonModel) : false;
-  const currentRequestId = currentRequest?.id ?? null;
-  const displayPendingParticipants = Array.from(new Set([...pendingParticipants, ...localPendingAgents]));
 
-  const sessionLabel =
-    sessionStatus === "none" ? "No session" : sessionStatus === "active" ? "In session" : "Concluded";
-  const sessionOrbClass = `status-orb status-orb-${sessionStatus}`;
+  const displayPendingParticipants = useMemo(
+    () => Array.from(new Set([...pendingParticipants, ...localPendingAgents])),
+    [pendingParticipants, localPendingAgents],
+  );
 
-  const clearSummonNoticeTimeout = useCallback(() => {
-    if (refreshNoticeTimeoutRef.current !== null) {
-      clearTimeout(refreshNoticeTimeoutRef.current);
-      refreshNoticeTimeoutRef.current = null;
+  const activeAgents = useMemo(() => {
+    const names = new Set<string>();
+    names.add(name);
+    if (currentRequest?.created_by) {
+      names.add(currentRequest.created_by);
     }
-  }, []);
-
-  const scheduleSummonNoticeClear = useCallback(() => {
-    clearSummonNoticeTimeout();
-    refreshNoticeTimeoutRef.current = setTimeout(() => {
-      setSummonNotice(null);
-      refreshNoticeTimeoutRef.current = null;
-    }, 2500);
-  }, [clearSummonNoticeTimeout]);
-
-  useEffect(() => () => clearSummonNoticeTimeout(), [clearSummonNoticeTimeout]);
-
-  const handleStart = async () => {
-    const success = await start(name, requestDraft);
-    if (success) {
-      setRequestDraft("");
-      setShowSummon(false);
+    for (const entry of feedback) {
+      names.add(entry.author);
     }
-  };
-
-  const handleSend = async () => {
-    const success = await send(name, responseDraft);
-    if (success) {
-      setResponseDraft("");
+    for (const pending of displayPendingParticipants) {
+      names.add(pending);
     }
-  };
 
-  const handleClose = async () => {
-    const success = await close(name, conclusionDraft);
-    if (success) {
-      setConclusionDraft("");
+    return Array.from(names);
+  }, [currentRequest?.created_by, displayPendingParticipants, feedback, name]);
+
+  const hallMessages = useMemo<HallMessage[]>(() => {
+    const messages: HallMessage[] = feedback.map((entry) => ({
+      id: entry.id,
+      author: entry.author,
+      content: entry.content,
+      created_at: entry.created_at,
+      message_type: hasCodeBlock(entry.content) ? "code" : "text",
+      agent_type: getAgentType(entry.author),
+      own: entry.author === name,
+    }));
+
+    if (summonFailure) {
+      messages.push({
+        id: `summon-failure-${summonFailure.agent}`,
+        author: summonFailure.agent,
+        content: summonFailure.message,
+        created_at: new Date().toISOString(),
+        message_type: "system",
+        agent_type: getAgentType(summonFailure.agent),
+        own: false,
+      });
     }
-  };
+
+    return messages;
+  }, [feedback, name, summonFailure]);
 
   const applySummonDefaults = useCallback((settings: SummonSettingsResponse, nextAgent?: string) => {
     const agent = nextAgent ?? settings.default_agent ?? settings.supported_agents[0] ?? "";
@@ -198,29 +151,16 @@ export function Hall({ name, council, onNameChange }: HallProps) {
     setSummonReasoningEffort(nextEffort);
   }, []);
 
-  const isNearBottom = useCallback(() => {
-    const threshold = 150; // pixels from bottom
-    const scrollTop = window.scrollY || document.documentElement.scrollTop;
-    const scrollHeight = document.documentElement.scrollHeight;
-    const clientHeight = window.innerHeight;
-    return scrollHeight - scrollTop - clientHeight < threshold;
-  }, []);
-
-  const scrollToBottom = useCallback(() => {
-    setTimeout(() => {
-      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-      setHasNewMessages(false);
-    }, 100);
-  }, []);
-
   useEffect(() => {
     if (!showSummonAgent) {
       return;
     }
+
     let cancelled = false;
     setSummonBusy(true);
     setSummonError(null);
     setSummonNotice(null);
+
     getSummonSettings()
       .then((settings) => {
         if (cancelled) {
@@ -250,13 +190,7 @@ export function Hall({ name, council, onNameChange }: HallProps) {
     if (!currentRequestId) {
       return;
     }
-    setLocalPendingAgents([]);
-  }, [currentRequestId]);
 
-  useEffect(() => {
-    if (!currentRequestId) {
-      return;
-    }
     setLocalPendingAgents((prev) =>
       prev.filter(
         (agent) => !feedback.some((entry) => entry.request_id === currentRequestId && entry.author === agent),
@@ -271,6 +205,7 @@ export function Hall({ name, council, onNameChange }: HallProps) {
       }
       return;
     }
+
     const model = selectedSummonModel;
     if (!model) {
       if (summonReasoningEffort !== "") {
@@ -278,6 +213,7 @@ export function Hall({ name, council, onNameChange }: HallProps) {
       }
       return;
     }
+
     const options = model.supported_reasoning_efforts ?? [];
     if (options.length === 0) {
       if (summonReasoningEffort !== "") {
@@ -285,9 +221,11 @@ export function Hall({ name, council, onNameChange }: HallProps) {
       }
       return;
     }
+
     if (summonReasoningEffort && options.some((effort) => effort.reasoning_effort === summonReasoningEffort)) {
       return;
     }
+
     const savedEffort = summonSettings.agents[summonAgentName]?.reasoning_effort ?? null;
     const nextEffort = resolveReasoningEffort(model, savedEffort);
     if (nextEffort !== summonReasoningEffort) {
@@ -295,52 +233,48 @@ export function Hall({ name, council, onNameChange }: HallProps) {
     }
   }, [selectedSummonModel, summonAgentName, summonReasoningEffort, summonSettings]);
 
-  // Detect new messages from WebSocket updates
-  useEffect(() => {
-    const prevLength = prevFeedbackLengthRef.current;
-    const currentLength = feedback.length;
-
-    // Update the ref for next comparison
-    prevFeedbackLengthRef.current = currentLength;
-
-    // If new messages arrived and user is not near bottom, show toast
-    // Use requestAnimationFrame to check after React renders the new content
-    if (currentLength > prevLength && prevLength > 0) {
-      requestAnimationFrame(() => {
-        const nearBottom = isNearBottom();
-        if (!nearBottom) {
-          setHasNewMessages(true);
-        }
-      });
+  const handleStart = async () => {
+    const success = await start(name, requestDraft);
+    if (success) {
+      setRequestDraft("");
+      setShowStartModal(false);
+      setSummonFailure(null);
     }
-  }, [feedback.length, isNearBottom]);
+  };
 
-  // Clear new messages toast when user scrolls to bottom
-  useEffect(() => {
-    if (!hasNewMessages) return;
+  const handleSend = async () => {
+    const success = await send(name, responseDraft);
+    if (success) {
+      setResponseDraft("");
+    }
+  };
 
-    const handleScroll = () => {
-      const nearBottom = isNearBottom();
-      console.log("[Toast Debug] Scroll event - nearBottom:", nearBottom);
-      if (nearBottom) {
-        console.log("[Toast Debug] Clearing hasNewMessages due to scroll");
-        setHasNewMessages(false);
-      }
-    };
+  const handleClose = async () => {
+    const success = await close(name, conclusionDraft);
+    if (success) {
+      setConclusionDraft("");
+    }
+  };
 
-    window.addEventListener("scroll", handleScroll, { passive: true });
-    return () => window.removeEventListener("scroll", handleScroll);
-  }, [hasNewMessages, isNearBottom]);
+  const handleSelectSession = async (sessionId: string) => {
+    if (sessionId === activeSessionId) {
+      return;
+    }
+
+    await selectSession(name, sessionId);
+  };
 
   const handleSummonAgentChange = (event: ChangeEvent<HTMLSelectElement>) => {
     const nextAgent = event.target.value;
     setSummonNotice(null);
     setSummonError(null);
+
     if (summonSettings) {
       applySummonDefaults(summonSettings, nextAgent);
-    } else {
-      setSummonAgentName(nextAgent);
+      return;
     }
+
+    setSummonAgentName(nextAgent);
   };
 
   const handleSummonAgent = async () => {
@@ -366,7 +300,6 @@ export function Hall({ name, council, onNameChange }: HallProps) {
       settingsPayload.reasoning_effort = reasoningEffort.length > 0 ? reasoningEffort : null;
     }
 
-    // Show brief loading state on button
     setSummonBusy(true);
     setSummonError(null);
     setSummonNotice(null);
@@ -374,21 +307,13 @@ export function Hall({ name, council, onNameChange }: HallProps) {
     setLocalPendingAgents((prev) => (prev.includes(summonAgentName) ? prev : [...prev, summonAgentName]));
 
     try {
-      // Save settings first
       const updatedSettings = await updateSummonSettings(settingsPayload);
       setSummonSettings(updatedSettings);
-
-      // Show loading animation for 200ms before closing modal
       await new Promise((resolve) => setTimeout(resolve, 200));
-
-      // Close modal - loading indicator will appear via pendingParticipants from API
       setShowSummonAgent(false);
-
-      // Run summon in background
       await summonAgent(summonPayload);
     } catch (err) {
       setLocalPendingAgents((prev) => prev.filter((agent) => agent !== summonAgentName));
-      // Show error inline in the messages area
       const message = err instanceof Error ? err.message : "Unable to summon agent.";
       setSummonFailure({ agent: summonAgentName, message });
     } finally {
@@ -400,16 +325,16 @@ export function Hall({ name, council, onNameChange }: HallProps) {
     if (refreshingModels) {
       return;
     }
+
     setRefreshingModels(true);
     setSummonError(null);
     setSummonNotice("Refreshing models...");
-    clearSummonNoticeTimeout();
+
     try {
       const updatedSettings = await refreshSummonModels();
       setSummonSettings(updatedSettings);
       applySummonDefaults(updatedSettings, summonAgentName);
       setSummonNotice("Models refreshed.");
-      scheduleSummonNoticeClear();
     } catch (err) {
       setSummonError(err instanceof Error ? err.message : "Failed to refresh models.");
       setSummonNotice(null);
@@ -418,265 +343,55 @@ export function Hall({ name, council, onNameChange }: HallProps) {
     }
   };
 
-  const closeSummonAgentModal = () => {
-    setShowSummonAgent(false);
-    setSummonError(null);
-    setSummonNotice(null);
-    clearSummonNoticeTimeout();
-  };
-
   return (
-    <div className="app">
-      <header className="hero">
-        <div className="brand">
-          <div className="brand-text">
-            <div className="brand-title">Council Hall</div>
-          </div>
-        </div>
-        <div className="hero-controls">
-          <div className={`status-indicator status-indicator-${sessionStatus}`} title={sessionLabel}>
-            <span className={sessionOrbClass} aria-hidden="true" />
-            <span>{sessionLabel}</span>
-          </div>
-          <div className="identity">
-            You are <strong>{name}</strong>
-          </div>
-          <button type="button" className="btn btn-ghost btn-settings" onClick={() => setShowSettings(true)}>
-            Settings
-          </button>
-        </div>
-      </header>
+    <div className="council-shell">
+      <CouncilSidebar
+        operatorName={name}
+        sessions={sessions}
+        activeSessionId={activeSessionId}
+        onSelectSession={(sessionId) => void handleSelectSession(sessionId)}
+        onNewSession={() => setShowStartModal(true)}
+        onOpenSettings={() => setShowSettings(true)}
+        busy={busy}
+      />
 
-      {connection !== "listening" ? (
-        <output className={`status-banner status-banner-${connection}`}>
-          Connection lost. Attempting to rejoin...
-        </output>
-      ) : null}
-
-      {error ? (
-        <div className="alert" role="alert">
-          {error}
-        </div>
-      ) : null}
-
-      {notice ? <output className="notice">{notice}</output> : null}
-
-      <main className="hall">
-        <section className="panel-primary matter-panel">
-          <div className="panel-primary-inner" />
-          <div className="panel-primary-corners" />
-          <div className="panel-header panel-header-centered">
-            <h2 className="panel-title-decorated panel-title-hero">
-              <span className="title-flourish">◆</span>
-              The Matter Before the Council
-              <span className="title-flourish">◆</span>
-            </h2>
-          </div>
-          <div className="matter-content">
-            {currentRequest ? (
-              <article className={`message-card panel-secondary agent-${getAgentType(currentRequest.created_by)}`}>
-                <header className="message-card-header">
-                  <AgentBadge name={currentRequest.created_by} />
-                  <span className="stamp">{formatTime(currentRequest.created_at)}</span>
-                </header>
-                <div className="message-card-content">
-                  <MarkdownPreview
-                    className="message-content"
-                    source={currentRequest.content}
-                    skipHtml
-                    pluginsFilter={filterMarkdownPlugins}
-                    wrapperElement={{ "data-color-mode": "dark" }}
-                  />
-                </div>
-              </article>
-            ) : (
-              <p className="muted matter-empty">No council is in session. Bring a matter before the wise.</p>
-            )}
-            {council.state?.session?.conclusion ? (
-              <div className="conclusion">
-                <div className="solution-label">The Conclusion</div>
-                <p className="conclusion-text">{council.state.session.conclusion.content}</p>
-                <div className="meta-row">
-                  Spoken by <AgentBadge name={council.state.session.conclusion.author} /> at{" "}
-                  {formatDateTime(council.state.session.conclusion.created_at)}
-                </div>
-              </div>
-            ) : null}
-          </div>
-          {!isActive ? (
-            <div className="matter-actions-footer">
-              <button type="button" className="btn-game" onClick={() => setShowSummon(true)} disabled={busy}>
-                {summonLabel}
-              </button>
-            </div>
-          ) : null}
-        </section>
-
-        <section className="panel-primary voices-panel">
-          <div className="panel-primary-inner" />
-          <div className="panel-primary-corners" />
-          <div className="panel-header">
-            <h2 className="panel-title-decorated">
-              <span className="title-flourish">◆</span>
-              Voices of the Council
-              <span className="title-flourish">◆</span>
-            </h2>
-            <div className="voices-header-actions">
-              {!isIdle ? (
-                <span className="voices-count">
-                  {feedback.length} {feedback.length === 1 ? "voice" : "voices"}
-                </span>
-              ) : null}
-              {isActive ? (
-                <button
-                  type="button"
-                  className="btn-game"
-                  onClick={() => setShowSummonAgent(true)}
-                  disabled={busy || summonBusy}
-                >
-                  Summon Agent
-                </button>
-              ) : null}
-            </div>
-          </div>
-          {isIdle ? (
-            <div className="empty">No council is in session.</div>
-          ) : (
-            <div className="messages" ref={messagesContainerRef}>
-              {feedback.length === 0 && displayPendingParticipants.length === 0 && !summonFailure ? (
-                <div className="empty">The council listens...</div>
-              ) : (
-                <>
-                  {feedback.map((entry) => {
-                    const agentType = getAgentType(entry.author);
-                    return (
-                      <article key={entry.id} className={`message-card panel-secondary agent-${agentType}`}>
-                        <header className="message-card-header">
-                          <AgentBadge name={entry.author} />
-                          <span className="stamp">{formatTime(entry.created_at)}</span>
-                        </header>
-                        <div className="message-card-content">
-                          <MarkdownPreview
-                            className="message-content"
-                            source={entry.content}
-                            skipHtml
-                            pluginsFilter={filterMarkdownPlugins}
-                            wrapperElement={{ "data-color-mode": "dark" }}
-                          />
-                        </div>
-                      </article>
-                    );
-                  })}
-                  {displayPendingParticipants.map((agentName) => (
-                    <article
-                      key={`pending-${agentName}`}
-                      className={`message-card panel-secondary agent-${getAgentType(agentName)} thinking`}
-                    >
-                      <header className="message-card-header">
-                        <AgentBadge name={agentName} />
-                        <span className="stamp thinking-label">thinking...</span>
-                      </header>
-                      <div className="message-card-content">
-                        <div className="thinking-indicator">
-                          <span className="thinking-dot" />
-                          <span className="thinking-dot" />
-                          <span className="thinking-dot" />
-                        </div>
-                      </div>
-                    </article>
-                  ))}
-                  {summonFailure ? (
-                    <article
-                      className={`message-card panel-secondary agent-${getAgentType(summonFailure.agent)} error-card`}
-                    >
-                      <header className="message-card-header">
-                        <AgentBadge name={summonFailure.agent} />
-                        <span className="stamp error-label">failed</span>
-                      </header>
-                      <div className="message-card-content">
-                        <p className="error-text">{summonFailure.message}</p>
-                        <button type="button" className="btn-link" onClick={() => setSummonFailure(null)}>
-                          Dismiss
-                        </button>
-                      </div>
-                    </article>
-                  ) : null}
-                </>
-              )}
-              <div ref={messagesEndRef} />
-            </div>
-          )}
-        </section>
-
-        {isActive ? (
-          <section className="panel-primary composer-panel">
-            <div className="panel-primary-inner" />
-            <div className="panel-primary-corners" />
-            <div className="panel-header">
-              <h2 className="panel-title-decorated">
-                <span className="title-flourish">◆</span>
-                Your Counsel
-                <span className="title-flourish">◆</span>
-              </h2>
-            </div>
-            <textarea
-              id="response-draft"
-              className="composer-textarea"
-              value={responseDraft}
-              onChange={(event) => setResponseDraft(event.target.value)}
-              placeholder="Share your wisdom..."
-              rows={4}
-            />
-            <div className="composer-actions">
-              <button
-                type="button"
-                className="btn-game"
-                onClick={() => void handleSend()}
-                disabled={busy || !responseDraft.trim()}
-              >
-                {speakLabel}
-              </button>
-            </div>
-          </section>
+      <main className="council-main">
+        {connection !== "listening" ? (
+          <output className="status-banner status-banner-offline">Connection lost. Attempting to rejoin...</output>
         ) : null}
 
-        {isActive ? (
-          <section className="panel-primary seal-panel">
-            <div className="panel-primary-inner" />
-            <div className="panel-primary-corners" />
-            <div className="panel-header panel-header-centered">
-              <h2 className="panel-title-decorated">
-                <span className="title-flourish">◆</span>
-                Seal the Matter
-                <span className="title-flourish">◆</span>
-              </h2>
-            </div>
-            <p className="seal-helper">Seal only after the council agrees on a final answer.</p>
-            <div className="matter-seal-input">
-              <label className="label" htmlFor="conclusion-draft">
-                Conclusion (to seal)
-              </label>
-              <textarea
-                id="conclusion-draft"
-                className="textarea"
-                value={conclusionDraft}
-                onChange={(event) => setConclusionDraft(event.target.value)}
-                placeholder="Speak the final word..."
-                rows={2}
-              />
-            </div>
-            <div className="seal-actions">
-              <button
-                type="button"
-                className="btn-game btn-game-seal"
-                onClick={() => void handleClose()}
-                disabled={busy || !conclusionDraft.trim() || !canCloseCouncil}
-              >
-                Seal the Matter
-              </button>
-            </div>
-          </section>
+        {error ? (
+          <div className="alert" role="alert">
+            {error}
+          </div>
         ) : null}
+
+        {notice ? <output className="notice">{notice}</output> : null}
+
+        <CouncilHall
+          sessionTitle={sessionTitle}
+          sessionStatus={sessionStatus}
+          request={currentRequest}
+          messages={hallMessages}
+          pendingParticipants={displayPendingParticipants}
+          activeAgents={activeAgents}
+          responseDraft={responseDraft}
+          onResponseDraftChange={setResponseDraft}
+          onResponseKeyDown={(event) => {
+            if (event.key === "Enter" && !event.shiftKey) {
+              event.preventDefault();
+              void handleSend();
+            }
+          }}
+          onSendResponse={() => void handleSend()}
+          canSendResponse={!busy && responseDraft.trim().length > 0 && sessionStatus === "active"}
+          conclusionDraft={conclusionDraft}
+          onConclusionDraftChange={setConclusionDraft}
+          onCloseCouncil={() => void handleClose()}
+          canCloseCouncil={!busy && conclusionDraft.trim().length > 0 && canCloseCouncil}
+          onOpenSummonAgent={() => setShowSummonAgent(true)}
+          summonDisabled={busy || summonBusy}
+        />
       </main>
 
       {showSettings ? (
@@ -690,27 +405,32 @@ export function Hall({ name, council, onNameChange }: HallProps) {
         />
       ) : null}
 
-      {showSummon ? (
+      {showStartModal ? (
         <div
           className="dialog-backdrop"
           onClick={(event) => {
             if (event.target === event.currentTarget) {
-              setShowSummon(false);
+              setShowStartModal(false);
             }
           }}
           onKeyDown={(event) => {
             if (event.key === "Escape") {
-              setShowSummon(false);
+              setShowStartModal(false);
             }
           }}
           role="dialog"
           aria-modal="true"
-          aria-label="Summon the Council"
+          aria-label="Spawn session"
         >
           <div className="dialog-panel">
             <div className="dialog-header">
-              <h2>Summon the Council</h2>
-              <button type="button" className="dialog-close" onClick={() => setShowSummon(false)} aria-label="Close">
+              <h2>Spawn Session</h2>
+              <button
+                type="button"
+                className="dialog-close"
+                onClick={() => setShowStartModal(false)}
+                aria-label="Close"
+              >
                 ×
               </button>
             </div>
@@ -733,7 +453,7 @@ export function Hall({ name, council, onNameChange }: HallProps) {
                 rows={4}
               />
               <div className="dialog-actions">
-                <button type="button" className="btn-ghost" onClick={() => setShowSummon(false)}>
+                <button type="button" className="btn-ghost" onClick={() => setShowStartModal(false)}>
                   Cancel
                 </button>
                 <button type="submit" className="btn-game" disabled={busy || !requestDraft.trim()}>
@@ -750,12 +470,16 @@ export function Hall({ name, council, onNameChange }: HallProps) {
           className="dialog-backdrop"
           onClick={(event) => {
             if (event.target === event.currentTarget) {
-              closeSummonAgentModal();
+              setShowSummonAgent(false);
+              setSummonError(null);
+              setSummonNotice(null);
             }
           }}
           onKeyDown={(event) => {
             if (event.key === "Escape") {
-              closeSummonAgentModal();
+              setShowSummonAgent(false);
+              setSummonError(null);
+              setSummonNotice(null);
             }
           }}
           role="dialog"
@@ -769,14 +493,23 @@ export function Hall({ name, council, onNameChange }: HallProps) {
               <button
                 type="button"
                 className="btn-icon dialog-header-action"
-                onClick={handleRefreshModels}
+                onClick={() => void handleRefreshModels()}
                 title="Refresh models"
                 aria-label="Refresh models"
                 disabled={!summonSettings || summonBusy || refreshingModels}
               >
                 ⟳
               </button>
-              <button type="button" className="dialog-close" onClick={closeSummonAgentModal} aria-label="Close">
+              <button
+                type="button"
+                className="dialog-close"
+                onClick={() => {
+                  setShowSummonAgent(false);
+                  setSummonError(null);
+                  setSummonNotice(null);
+                }}
+                aria-label="Close"
+              >
                 ×
               </button>
             </div>
@@ -872,7 +605,16 @@ export function Hall({ name, council, onNameChange }: HallProps) {
                   </>
                 ) : null}
                 <div className="dialog-actions">
-                  <button type="button" className="btn-ghost" onClick={closeSummonAgentModal} disabled={summonBusy}>
+                  <button
+                    type="button"
+                    className="btn-ghost"
+                    onClick={() => {
+                      setShowSummonAgent(false);
+                      setSummonError(null);
+                      setSummonNotice(null);
+                    }}
+                    disabled={summonBusy}
+                  >
                     Cancel
                   </button>
                   <button type="submit" className="btn-game" disabled={summonBusy || !summonAgentName}>
@@ -884,35 +626,29 @@ export function Hall({ name, council, onNameChange }: HallProps) {
           </div>
         </div>
       ) : null}
-
-      {/* Toast - rendered at root level for proper fixed positioning */}
-      {hasNewMessages ? (
-        <button type="button" className="new-messages-toast" onClick={scrollToBottom}>
-          ↓ New messages
-        </button>
-      ) : null}
     </div>
   );
 }
 
-function formatTime(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+function getAgentType(name: string): HallAgentType {
+  const lower = name.toLowerCase();
+  if (lower.includes("claude")) return "claude";
+  if (lower.includes("codex")) return "codex";
+  if (lower.includes("gemini")) return "gemini";
+  if (lower.includes("human")) return "human";
+  return "other";
 }
 
-function formatDateTime(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return value;
+function hasCodeBlock(content: string): boolean {
+  return /```[\s\S]*```/.test(content);
+}
+
+function deriveSessionTitle(content: string): string {
+  const collapsed = content.trim().replace(/\s+/g, " ");
+  if (!collapsed) {
+    return "Council Hall";
   }
-  return date.toLocaleString([], {
-    year: "numeric",
-    month: "short",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+
+  const maxLength = 64;
+  return collapsed.length <= maxLength ? collapsed : `${collapsed.slice(0, maxLength - 1)}…`;
 }
