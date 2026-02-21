@@ -70,8 +70,18 @@ Disable auto-open:
 The MCP tools are meant for AI agent clients (Claude/Codex/Gemini/etc). The chat UI is the human-facing
 interface for participating in the same local council session.
 
-From the chat UI you can also summon a Claude or Codex agent into an active council. The summon modal lets you
-select agent/model, and those selections persist between runs.
+The UI contract follows the Council Hall redesign:
+
+- `CouncilSidebar`: session chronicle, active session selection, spawn action, archive section
+- `CouncilHall`: session header, voice stream, composer, and summon entry
+- `Summon modal`: agent selection and optional model overrides
+
+Selections for summon agent/model persist between runs.
+
+For implementation guidance, use:
+
+- `docs/ui-spec.md` as the canonical UI specification
+- `docs/ui-implementation-progress.md` as the parity tracker
 
 ## Tools (v1)
 

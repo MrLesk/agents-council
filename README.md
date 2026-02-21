@@ -145,13 +145,20 @@ Run the local web interface for human participants:
 council chat
 ```
 
-The chat UI runs on `localhost` and allows you to monitor the session in real-time. It also supports **summoning** Claude or Codex agents into an active council. The summon modal lets you pick agent/model, and selections persist in `~/.agents-council/config.json`.
+The chat UI runs on `localhost` and follows the Council Hall redesign:
+
+- **Council Sidebar**: session chronicle, session spawn action, and archive area.
+- **Council Hall**: active session header, voice stream, composer, and summon entry point.
+
+The summon workflow is part of the Hall interface. Model and agent selections persist in `~/.agents-council/config.json`.
+
+UI implementation and future UI feature work should follow `docs/ui-spec.md` and `docs/ui-implementation-progress.md`.
 
 ---
 
 ## 🪄 Summon Agents
 
-The Summon feature lets you bring a Claude or Codex agent into your council session. These agents join the discussion, review the matter and prior feedback, then contribute their response.
+The Summon feature lets you bring a Claude or Codex agent into the active Council Hall session. Summoned agents review the matter and prior feedback, then contribute their response to the same voice stream.
 
 ### Summon Claude
 
