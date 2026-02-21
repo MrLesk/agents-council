@@ -4,6 +4,8 @@ import type { CouncilStateStore } from "../../state/store";
 import type {
   CloseCouncilInput,
   CloseCouncilResult,
+  CloseSessionInput,
+  CloseSessionResult,
   CouncilConclusion,
   CouncilFeedback,
   CouncilParticipant,
@@ -28,6 +30,7 @@ export interface CouncilService {
   startCouncil(input: StartCouncilInput): Promise<StartCouncilResult>;
   getCurrentSessionData(input: GetCurrentSessionDataInput): Promise<GetCurrentSessionDataResult>;
   closeCouncil(input: CloseCouncilInput): Promise<CloseCouncilResult>;
+  closeSession(input: CloseSessionInput): Promise<CloseSessionResult>;
   sendResponse(input: SendResponseInput): Promise<SendResponseResult>;
   listSessions(input?: ListSessionsInput): Promise<ListSessionsResult>;
   getSessionData(input: GetSessionDataInput): Promise<GetSessionDataResult>;
@@ -135,10 +138,24 @@ export class CouncilServiceImpl implements CouncilService {
   }
 
   async closeCouncil(input: CloseCouncilInput): Promise<CloseCouncilResult> {
+    const state = await this.store.load();
+    const session = getActiveSession(state);
+    if (!session) {
+      throw new Error("No active session.");
+    }
+
+    return this.closeSession({
+      agentName: input.agentName,
+      sessionId: session.id,
+      conclusion: input.conclusion,
+    });
+  }
+
+  async closeSession(input: CloseSessionInput): Promise<CloseSessionResult> {
     return this.store.update((state) => {
-      const session = getActiveSession(state);
+      const session = findSessionById(state, input.sessionId);
       if (!session) {
-        throw new Error("No active session.");
+        throw new Error("Session not found.");
       }
       if (session.status === "closed") {
         throw new Error("Council session is already closed.");

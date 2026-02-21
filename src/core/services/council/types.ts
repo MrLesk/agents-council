@@ -87,6 +87,19 @@ export type CloseCouncilResult = {
   state: CouncilState;
 };
 
+export type CloseSessionInput = {
+  agentName: string;
+  sessionId: string;
+  conclusion: string;
+};
+
+export type CloseSessionResult = {
+  agentName: string;
+  session: CouncilSession;
+  conclusion: CouncilConclusion;
+  state: CouncilState;
+};
+
 export type SendResponseInput = {
   agentName: string;
   content: string;

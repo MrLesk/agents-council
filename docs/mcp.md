@@ -37,3 +37,24 @@
 - [Logging](mcp/specification/2025-11-25/server/utilities/logging.md)
 - [Pagination](mcp/specification/2025-11-25/server/utilities/pagination.md)
 - [Versioning](mcp/specification/versioning.md)
+
+## Agents Council MCP migration notes (v2 session targeting)
+
+Agents Council now requires explicit `session_id` targeting for existing-session operations.
+
+- `start_council`: creates a session and returns `session_id`
+- `join_council`: requires `session_id`
+- `get_current_session_data`: requires `session_id`
+- `send_response`: requires `session_id`
+- `close_council`: requires `session_id`
+
+Migration guidance:
+
+1. Store `session_id` returned by `start_council`.
+2. Pass that `session_id` on all join/get/send/close calls.
+3. Update clients to handle explicit target errors:
+   - missing `session_id`
+   - `Session not found.`
+   - `Council session is closed.` / `Council session is already closed.`
+
+See `docs/council.md` for tool-level examples and MCP Inspector validation commands.
