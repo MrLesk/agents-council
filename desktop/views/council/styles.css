@@ -1,0 +1,42 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+  font-family: "SF Pro Text", "Segoe UI", -apple-system, sans-serif;
+  background: radial-gradient(circle at top, #232f48 0%, #14191f 56%, #0c0f13 100%);
+  color: #f4f6fb;
+}
+
+body {
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.shell {
+  width: min(720px, 100%);
+  border-radius: 14px;
+  border: 1px solid rgba(148, 173, 209, 0.35);
+  background: rgba(18, 24, 36, 0.88);
+  box-shadow: 0 20px 80px rgba(0, 0, 0, 0.5);
+  padding: 28px;
+}
+
+h1 {
+  margin: 0 0 10px;
+  font-size: clamp(1.6rem, 2.8vw, 2.2rem);
+}
+
+p {
+  margin: 10px 0 0;
+  line-height: 1.5;
+}
+
+.hint {
+  color: #c8d3e8;
+  font-size: 0.95rem;
+}
