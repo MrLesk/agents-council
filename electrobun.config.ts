@@ -20,7 +20,7 @@ export default {
     },
     copy: {
       "desktop/views/council/index.html": "views/council/index.html",
-      "desktop/views/council/styles.css": "views/council/styles.css",
+      "src/interfaces/chat/ui/styles.css": "views/council/styles.css",
     },
     mac: {
       defaultRenderer: "native",

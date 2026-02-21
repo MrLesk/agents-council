@@ -51,7 +51,8 @@ export function watchCouncilState(options: WatchOptions): CouncilStateWatcher {
       schedule();
       return;
     }
-    if (path.basename(normalized) === targetName) {
+    const basename = path.basename(normalized);
+    if (basename === targetName || basename.startsWith(`${targetName}.`)) {
       schedule();
     }
   });

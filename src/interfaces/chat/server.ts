@@ -1,75 +1,28 @@
 import type { Server } from "bun";
 
-import type { SummonSettings } from "../../core/config/summonSettings";
-import { loadSummonSettings, upsertSummonSettings } from "../../core/config/summonSettings";
-import { CouncilServiceImpl } from "../../core/services/council";
-import {
-  SUPPORTED_SUMMON_AGENTS,
-  getClaudeCodeVersion,
-  getCodexCliVersion,
-  loadCachedSummonModelsByAgent,
-  refreshSummonModelsByAgent,
-  refreshSummonModelsInBackground,
-  isSupportedSummonAgent,
-  resolveDefaultSummonAgent,
-  summonAgent,
-} from "../../core/services/council/summon";
-import { FileCouncilStateStore } from "../../core/state/fileStateStore";
 import type { CouncilStateWatcher } from "../../core/state/watcher";
 import { watchCouncilState } from "../../core/state/watcher";
-import chatUi from "./ui/index.html";
 import {
-  mapCloseCouncilInput,
-  mapCloseCouncilResponse,
-  mapGetCurrentSessionDataInput,
-  mapGetCurrentSessionDataResponse,
-  mapSendResponseInput,
-  mapSendResponseResponse,
-  mapSummonAgentResponse,
-  mapStartCouncilInput,
-  mapStartCouncilResponse,
-} from "../mcp/mapper";
-import type {
-  CloseCouncilParams,
-  GetCurrentSessionDataParams,
-  JoinCouncilParams,
-  SendResponseParams,
-  StartCouncilParams,
-} from "../mcp/dtos/types";
+  BridgeApiError,
+  closeCouncilAction,
+  getCurrentSessionDataAction,
+  getErrorMessage,
+  getErrorStatus,
+  getSettingsAction,
+  getSummonSettingsAction,
+  joinCouncilAction,
+  refreshSummonModelsAction,
+  sendResponseAction,
+  startCouncilAction,
+  summonAgentAction,
+  updateSettingsAction,
+  updateSummonSettingsAction,
+} from "./bridge/actions";
+import chatUi from "./ui/index.html";
 
 type ChatServerOptions = {
   port: number;
   hostname?: string;
-};
-
-type JsonRecord = Record<string, unknown>;
-type SummonAgentSettingsDto = {
-  model: string | null;
-  reasoning_effort: string | null;
-};
-
-type SummonModelInfoDto = {
-  value: string;
-  display_name: string;
-  description: string;
-  supported_reasoning_efforts: { reasoning_effort: string; description: string }[];
-  default_reasoning_effort: string;
-};
-
-type SummonSettingsResponse = {
-  last_used_agent: string | null;
-  agents: Record<string, SummonAgentSettingsDto>;
-  supported_agents: string[];
-  supported_models_by_agent: Record<string, SummonModelInfoDto[]>;
-  default_agent: string;
-  claude_code_path: string | null;
-  claude_code_version: string | null;
-  codex_cli_version: string | null;
-};
-
-type GlobalSettingsResponse = {
-  claude_code_path: string | null;
-  codex_path: string | null;
 };
 
 export type ChatServer = {
@@ -78,9 +31,9 @@ export type ChatServer = {
   close: () => void;
 };
 
-const service = new CouncilServiceImpl(new FileCouncilStateStore());
 const STATE_TOPIC = "council-state";
 const STATE_CHANGED_EVENT = JSON.stringify({ type: "state-changed" });
+
 export function startChatServer(options: ChatServerOptions): ChatServer {
   const hostname = options.hostname ?? "127.0.0.1";
   const port = options.port;
@@ -104,30 +57,31 @@ export function startChatServer(options: ChatServerOptions): ChatServer {
             }
             return jsonError(400, "WebSocket upgrade failed.");
           }
+
           if (req.method === "POST") {
             switch (url.pathname) {
               case "/start-council":
-                return await handleStartCouncil(req);
+                return await handleJsonAction(req, startCouncilAction);
               case "/join-council":
-                return await handleJoinCouncil(req);
+                return await handleJsonAction(req, joinCouncilAction);
               case "/get-current-session-data":
-                return await handleGetCurrentSessionData(req);
+                return await handleJsonAction(req, getCurrentSessionDataAction);
               case "/send-response":
-                return await handleSendResponse(req);
+                return await handleJsonAction(req, sendResponseAction);
               case "/close-council":
-                return await handleCloseCouncil(req);
+                return await handleJsonAction(req, closeCouncilAction);
               case "/get-summon-settings":
-                return await handleGetSummonSettings();
+                return Response.json(await getSummonSettingsAction());
               case "/refresh-summon-models":
-                return await handleRefreshSummonModels();
+                return Response.json(await refreshSummonModelsAction());
               case "/update-summon-settings":
-                return await handleUpdateSummonSettings(req);
+                return await handleJsonAction(req, updateSummonSettingsAction);
               case "/summon-agent":
-                return await handleSummonAgent(req);
+                return await handleJsonAction(req, summonAgentAction);
               case "/get-settings":
-                return await handleGetSettings();
+                return Response.json(await getSettingsAction());
               case "/update-settings":
-                return await handleUpdateSettings(req);
+                return await handleJsonAction(req, updateSettingsAction);
               default:
                 return jsonError(404, "Not found.");
             }
@@ -135,10 +89,7 @@ export function startChatServer(options: ChatServerOptions): ChatServer {
 
           return jsonError(404, "Not found.");
         } catch (error) {
-          if (error instanceof ApiError) {
-            return jsonError(error.status, error.message);
-          }
-          return jsonError(500, getErrorMessage(error));
+          return jsonError(getErrorStatus(error), getErrorMessage(error));
         }
       },
       websocket: {
@@ -190,296 +141,22 @@ export function startChatServer(options: ChatServerOptions): ChatServer {
   };
 }
 
-async function handleStartCouncil(req: Request): Promise<Response> {
+async function handleJsonAction<T>(req: Request, action: (payload: unknown) => Promise<T>): Promise<Response> {
   const body = await readJsonBody(req);
-  const params: StartCouncilParams & { agent_name: string } = {
-    request: requireString(body, "request"),
-    agent_name: requireString(body, "agent_name"),
-  };
-  const result = await service.startCouncil(mapStartCouncilInput(params));
-  return Response.json(mapStartCouncilResponse(result));
+  const result = await action(body);
+  return Response.json(result);
 }
 
-async function handleJoinCouncil(req: Request): Promise<Response> {
-  const body = await readJsonBody(req);
-  const params: JoinCouncilParams & { agent_name: string } = {
-    agent_name: requireString(body, "agent_name"),
-  };
-  const result = await service.getCurrentSessionData(mapGetCurrentSessionDataInput(params));
-  return Response.json(mapGetCurrentSessionDataResponse(result));
-}
-
-async function handleGetCurrentSessionData(req: Request): Promise<Response> {
-  const body = await readJsonBody(req);
-  const params: GetCurrentSessionDataParams & { agent_name: string } = {
-    agent_name: requireString(body, "agent_name"),
-    cursor: optionalString(body, "cursor"),
-  };
-  const result = await service.getCurrentSessionData(mapGetCurrentSessionDataInput(params));
-  return Response.json(mapGetCurrentSessionDataResponse(result));
-}
-
-async function handleSendResponse(req: Request): Promise<Response> {
-  const body = await readJsonBody(req);
-  const params: SendResponseParams & { agent_name: string } = {
-    agent_name: requireString(body, "agent_name"),
-    content: requireString(body, "content"),
-  };
-  const result = await service.sendResponse(mapSendResponseInput(params));
-  return Response.json(mapSendResponseResponse(result));
-}
-
-async function handleCloseCouncil(req: Request): Promise<Response> {
-  const body = await readJsonBody(req);
-  const params: CloseCouncilParams & { agent_name: string } = {
-    agent_name: requireString(body, "agent_name"),
-    conclusion: requireString(body, "conclusion"),
-  };
-  const result = await service.closeCouncil(mapCloseCouncilInput(params));
-  return Response.json(mapCloseCouncilResponse(result));
-}
-
-async function handleGetSummonSettings(): Promise<Response> {
-  const [settings, supportedModelsByAgent, claudeCodeVersion, codexCliVersion] = await Promise.all([
-    loadSummonSettings(),
-    loadCachedSummonModelsByAgent(),
-    getClaudeCodeVersion(),
-    getCodexCliVersion(),
-  ]);
-  if (Object.values(supportedModelsByAgent).some((models) => models.length === 0)) {
-    refreshSummonModelsInBackground();
-  }
-  const supportedModelDtosByAgent = mapSupportedModelsByAgent(supportedModelsByAgent);
-  return Response.json(mapSummonSettings(settings, supportedModelDtosByAgent, claudeCodeVersion, codexCliVersion));
-}
-
-async function handleRefreshSummonModels(): Promise<Response> {
-  const supportedModelsByAgent = await refreshSummonModelsByAgent();
-  const [settings, claudeCodeVersion, codexCliVersion] = await Promise.all([
-    loadSummonSettings(),
-    getClaudeCodeVersion(),
-    getCodexCliVersion(),
-  ]);
-  const supportedModelDtosByAgent = mapSupportedModelsByAgent(supportedModelsByAgent);
-  return Response.json(mapSummonSettings(settings, supportedModelDtosByAgent, claudeCodeVersion, codexCliVersion));
-}
-
-async function handleUpdateSummonSettings(req: Request): Promise<Response> {
-  const body = await readJsonBody(req);
-  const agent = requireString(body, "agent");
-  if (!isSupportedSummonAgent(agent)) {
-    throw new ApiError(400, "Unsupported agent.");
-  }
-
-  const model = optionalStringOrNull(body, "model");
-  const reasoningEffort = optionalStringOrNull(body, "reasoning_effort");
-  const update: {
-    lastUsedAgent: string;
-    agents?: Record<string, { model?: string | null; reasoningEffort?: string | null }>;
-  } = {
-    lastUsedAgent: agent,
-  };
-
-  const agentUpdate: { model?: string | null; reasoningEffort?: string | null } = {};
-  if (model !== undefined) {
-    agentUpdate.model = model;
-  }
-  if (reasoningEffort !== undefined) {
-    agentUpdate.reasoningEffort = reasoningEffort;
-  }
-  if (Object.keys(agentUpdate).length > 0) {
-    update.agents = { [agent]: agentUpdate };
-  }
-
-  const updated = await upsertSummonSettings(update);
-  const [supportedModelsByAgent, claudeCodeVersion, codexCliVersion] = await Promise.all([
-    loadCachedSummonModelsByAgent(),
-    getClaudeCodeVersion(),
-    getCodexCliVersion(),
-  ]);
-  const supportedModelDtosByAgent = mapSupportedModelsByAgent(supportedModelsByAgent);
-  return Response.json(mapSummonSettings(updated, supportedModelDtosByAgent, claudeCodeVersion, codexCliVersion));
-}
-
-async function handleSummonAgent(req: Request): Promise<Response> {
-  const body = await readJsonBody(req);
-  const settings = await loadSummonSettings();
-  const requestedAgent = optionalStringOrNull(body, "agent");
-  const defaultAgent = resolveDefaultSummonAgent(settings.lastUsedAgent, SUPPORTED_SUMMON_AGENTS);
-  const agent = typeof requestedAgent === "string" ? requestedAgent : defaultAgent;
-  if (!isSupportedSummonAgent(agent)) {
-    throw new ApiError(400, "Unsupported agent.");
-  }
-
-  const model = optionalStringOrNull(body, "model");
-  const reasoningEffort = optionalStringOrNull(body, "reasoning_effort");
-  const result = await summonAgent({
-    agent,
-    model,
-    reasoningEffort,
-  });
-
-  return Response.json(mapSummonAgentResponse(result));
-}
-
-async function handleGetSettings(): Promise<Response> {
-  const settings = await loadSummonSettings();
-  const response: GlobalSettingsResponse = {
-    claude_code_path: settings.claudeCodePath,
-    codex_path: settings.codexPath,
-  };
-  return Response.json(response);
-}
-
-async function handleUpdateSettings(req: Request): Promise<Response> {
-  const body = await readJsonBody(req);
-  const claudeCodePath = optionalStringOrNull(body, "claude_code_path");
-  const codexPath = optionalStringOrNull(body, "codex_path");
-
-  const update: { claudeCodePath?: string | null; codexPath?: string | null } = {};
-  if (claudeCodePath !== undefined) {
-    update.claudeCodePath = claudeCodePath;
-  }
-  if (codexPath !== undefined) {
-    update.codexPath = codexPath;
-  }
-
-  const updated = await upsertSummonSettings(update);
-  const response: GlobalSettingsResponse = {
-    claude_code_path: updated.claudeCodePath,
-    codex_path: updated.codexPath,
-  };
-  return Response.json(response);
-}
-
-async function readJsonBody(req: Request): Promise<JsonRecord> {
-  let body: unknown;
+async function readJsonBody(req: Request): Promise<unknown> {
   try {
-    body = await req.json();
+    return await req.json();
   } catch {
-    throw new ApiError(400, "Invalid JSON body.");
+    throw new BridgeApiError(400, "Invalid JSON body.");
   }
-
-  if (!isRecord(body)) {
-    throw new ApiError(400, "Request body must be a JSON object.");
-  }
-
-  return body;
-}
-
-function requireString(body: JsonRecord, field: string): string {
-  const value = body[field];
-  if (typeof value !== "string" || value.trim().length === 0) {
-    throw new ApiError(400, `"${field}" is required.`);
-  }
-  return value.trim();
-}
-
-function optionalString(body: JsonRecord, field: string): string | undefined {
-  const value = body[field];
-  if (value === undefined || value === null) {
-    return undefined;
-  }
-  if (typeof value !== "string") {
-    throw new ApiError(400, `"${field}" must be a string.`);
-  }
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : undefined;
-}
-
-function optionalStringOrNull(body: JsonRecord, field: string): string | null | undefined {
-  if (!(field in body)) {
-    return undefined;
-  }
-
-  const value = body[field];
-  if (value === null) {
-    return null;
-  }
-  if (typeof value !== "string") {
-    throw new ApiError(400, `"${field}" must be a string or null.`);
-  }
-
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : null;
-}
-
-function mapSupportedModelsByAgent(
-  supportedModelsByAgent: Record<
-    string,
-    {
-      value: string;
-      displayName: string;
-      description: string;
-      supportedReasoningEfforts: { reasoningEffort: string; description: string }[];
-      defaultReasoningEffort: string;
-    }[]
-  >,
-): Record<string, SummonModelInfoDto[]> {
-  const mapped: Record<string, SummonModelInfoDto[]> = {};
-
-  for (const [agent, models] of Object.entries(supportedModelsByAgent)) {
-    mapped[agent] = models.map((model) => ({
-      value: model.value,
-      display_name: model.displayName,
-      description: model.description,
-      supported_reasoning_efforts: model.supportedReasoningEfforts.map((effort) => ({
-        reasoning_effort: effort.reasoningEffort,
-        description: effort.description,
-      })),
-      default_reasoning_effort: model.defaultReasoningEffort,
-    }));
-  }
-
-  return mapped;
-}
-
-function mapSummonSettings(
-  settings: SummonSettings,
-  supportedModelsByAgent: Record<string, SummonModelInfoDto[]>,
-  claudeCodeVersion: string | null,
-  codexCliVersion: string | null,
-): SummonSettingsResponse {
-  const agents: Record<string, SummonAgentSettingsDto> = {};
-
-  for (const [agent, agentSettings] of Object.entries(settings.agents)) {
-    agents[agent] = {
-      model: agentSettings.model,
-      reasoning_effort: agentSettings.reasoningEffort,
-    };
-  }
-
-  return {
-    last_used_agent: settings.lastUsedAgent,
-    agents,
-    supported_agents: [...SUPPORTED_SUMMON_AGENTS],
-    supported_models_by_agent: supportedModelsByAgent,
-    default_agent: resolveDefaultSummonAgent(settings.lastUsedAgent, SUPPORTED_SUMMON_AGENTS),
-    claude_code_path: settings.claudeCodePath,
-    claude_code_version: claudeCodeVersion,
-    codex_cli_version: codexCliVersion,
-  };
 }
 
 function jsonError(status: number, message: string): Response {
   return Response.json({ error: message }, { status });
-}
-
-function getErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : "Unknown error";
-}
-
-function isRecord(value: unknown): value is JsonRecord {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-class ApiError extends Error {
-  constructor(
-    public readonly status: number,
-    message: string,
-  ) {
-    super(message);
-  }
 }
 
 function isErrno(error: unknown, code: string): error is NodeJS.ErrnoException {

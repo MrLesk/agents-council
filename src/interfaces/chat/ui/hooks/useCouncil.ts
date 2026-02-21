@@ -4,9 +4,9 @@ import {
   closeCouncil,
   getCurrentSessionData,
   joinCouncil,
-  resolveWebSocketUrl,
   sendResponse,
   startCouncil,
+  subscribeCouncilStateChanges,
 } from "../api";
 import type { CouncilStateDto, FeedbackDto, RequestDto } from "../types";
 
@@ -102,28 +102,17 @@ export function useCouncil(name: string | null): CouncilContext {
     }
   }, [name, refresh]);
 
-  // WebSocket connection for real-time updates
+  // Real-time state updates via desktop bridge (primary) or WebSocket fallback.
   useEffect(() => {
     if (!name) {
       return;
     }
-    const wsUrl = resolveWebSocketUrl();
-    if (!wsUrl) {
-      return;
-    }
 
-    // wsAttempt triggers reconnection after WebSocket closes
+    // wsAttempt triggers reconnection when the fallback websocket disconnects.
     const _attempt = wsAttempt;
     void _attempt;
 
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-    const ws = new WebSocket(wsUrl);
-
-    ws.addEventListener("open", () => {
-      setConnection("listening");
-      void refresh();
-    });
-
     const scheduleReconnect = () => {
       if (reconnectTimer) {
         return;
@@ -135,27 +124,27 @@ export function useCouncil(name: string | null): CouncilContext {
       }, 1500);
     };
 
-    ws.addEventListener("close", scheduleReconnect);
-    ws.addEventListener("error", scheduleReconnect);
-
-    ws.addEventListener("message", (event) => {
-      try {
-        const payload = JSON.parse(String(event.data)) as { type?: string };
-        if (payload.type === "state-changed") {
-          void refresh();
-          return;
-        }
-      } catch {
-        // Fall through and still refresh
-      }
-      void refresh();
+    const subscription = subscribeCouncilStateChanges({
+      onConnect: () => {
+        setConnection("listening");
+        void refresh();
+      },
+      onDisconnect: scheduleReconnect,
+      onChange: () => {
+        void refresh();
+      },
     });
+
+    if (!subscription) {
+      setConnection("offline");
+      return;
+    }
 
     return () => {
       if (reconnectTimer) {
         clearTimeout(reconnectTimer);
       }
-      ws.close();
+      subscription.close();
     };
   }, [name, refresh, wsAttempt]);
 
