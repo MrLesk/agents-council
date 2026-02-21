@@ -72,14 +72,14 @@ If intent is not explicit, ask for confirmation before activating.
 
 ## Sub-Agent Workspace Rules
 
-For each task `<taskId>` (example `BACK-123`), use a dedicated clone:
+For each task `<taskId>` (example `TASK-123`), use a dedicated clone:
 
 ```bash
-mkdir -p ../Backlog.md-copies
-if [ ! -d "../Backlog.md-copies/backlog-<taskId>/.git" ]; then
-  git clone "$(pwd)" "../Backlog.md-copies/backlog-<taskId>"
+mkdir -p ../agents-council-copies
+if [ ! -d "../agents-council-copies/agents-council-<taskId>/.git" ]; then
+  git clone "$(pwd)" "../agents-council-copies/agents-council-<taskId>"
 fi
-cd "../Backlog.md-copies/backlog-<taskId>"
+cd "../agents-council-copies/agents-council-<taskId>"
 bun i
 ```
 
@@ -107,7 +107,7 @@ Use this as the default brief for each spawned implementation agent:
    - Check off AC/DoD items as completed
    - Keep scope strict; escalate scope changes to TPM
 9. Finalize:
-   - Verify the change as a Backlog.md user, from the user point of view:
+   - Verify the change as a Agents Council user, from the user point of view:
      - Run impacted end-to-end user flows (CLI/MCP/Web/TUI as applicable)
      - Run relevant automated checks/tests for touched scope
      - Record concrete verification evidence (commands + outcomes) in notes/final summary
