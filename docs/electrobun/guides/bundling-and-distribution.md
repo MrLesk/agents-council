@@ -28,6 +28,40 @@
 
 # Bundling & Distribution
 
+## Agents Council release workflow
+
+This repository uses Electrobun artifacts as release payloads and keeps a single npm entry package.
+
+Distribution contract:
+
+- Root package: `agents-council`
+- Optional platform packages:
+  - `agents-council-linux-x64`
+  - `agents-council-linux-arm64`
+  - `agents-council-darwin-x64`
+  - `agents-council-darwin-arm64`
+  - `agents-council-windows-x64`
+
+Per-platform package contents:
+
+- `council` or `council.exe` (CLI binary used by `scripts/resolveBinary.cjs`)
+- `desktop-artifacts/*` (Electrobun stable installer/update artifacts)
+
+Release workflow behavior (`.github/workflows/release.yml`):
+
+1. Build host-native CLI binary (`bun build --compile`) and Electrobun stable artifacts (`electrobun build --env=stable`) on each platform runner.
+2. Publish root npm package with pinned optional dependency versions for the same tag.
+3. Publish platform optional packages with both CLI binary and desktop artifacts.
+4. Run install-sanity on macOS, Windows, and Linux and assert:
+   - `council --version`
+   - `council --help`
+   - `council mcp` startup signal
+5. Upload `desktop-artifacts/*` files to the GitHub release.
+
+Versioning note:
+
+- Electrobun config reads `AGENTS_COUNCIL_VERSION` when set, so CI tag builds emit artifacts using the release version.
+
 Continuing on from the [Creating UI](./creating-ui.md) guide.
 
 Let's add two more scripts to `package.json` to get our app ready for distribution: `build:canary` and `build:stable`.

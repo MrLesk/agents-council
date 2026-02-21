@@ -1,8 +1,8 @@
-name: Release multi-platform executables
+name: Release desktop+CLI packages
 
 on:
   push:
-    tags: ['v*.*.*']
+    tags: ["v*.*.*"]
 
 permissions:
   contents: write
@@ -10,90 +10,157 @@ permissions:
 
 jobs:
   build:
-    name: build-${{ matrix.target }}
+    name: build-${{ matrix.package }}
     strategy:
       matrix:
         include:
-          - os: ubuntu-latest
-            target: bun-linux-x64-baseline
-          - os: ubuntu-latest
-            target: bun-linux-arm64
-          - os: macos-latest
-            target: bun-darwin-x64
-          - os: macos-latest
-            target: bun-darwin-arm64
-          - os: windows-latest
-            target: bun-windows-x64-baseline
-    runs-on: ${{ matrix.os }}
-    env:
-      BIN: council-bin${{ contains(matrix.target,'windows') && '.exe' || '' }}
+          - runner: ubuntu-latest
+            platform: linux
+            arch: x64
+            package: agents-council-linux-x64
+            npm_os: linux
+            npm_cpu: x64
+            binary_ext: ""
+          - runner: ubuntu-24.04-arm
+            platform: linux
+            arch: arm64
+            package: agents-council-linux-arm64
+            npm_os: linux
+            npm_cpu: arm64
+            binary_ext: ""
+          - runner: macos-13
+            platform: macos
+            arch: x64
+            package: agents-council-darwin-x64
+            npm_os: darwin
+            npm_cpu: x64
+            binary_ext: ""
+          - runner: macos-14
+            platform: macos
+            arch: arm64
+            package: agents-council-darwin-arm64
+            npm_os: darwin
+            npm_cpu: arm64
+            binary_ext: ""
+          - runner: windows-latest
+            platform: win
+            arch: x64
+            package: agents-council-windows-x64
+            npm_os: win32
+            npm_cpu: x64
+            binary_ext: .exe
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v6
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
       - uses: actions/cache@v5
-        id: cache
         with:
           path: ~/.bun/install/cache
-          key: ${{ runner.os }}-${{ matrix.target }}-bun-latest-${{ hashFiles('**/bun.lock') }}
+          key: ${{ runner.os }}-${{ matrix.package }}-bun-latest-${{ hashFiles('**/bun.lock') }}
           restore-keys: |
-            ${{ runner.os }}-${{ matrix.target }}-bun-latest-
-      - run: bun install --frozen-lockfile
-      - name: Sync version to tag
+            ${{ runner.os }}-${{ matrix.package }}-bun-latest-
+      - run: bun install --frozen-lockfile --linker=isolated
+      - name: Sync package version to tag
         shell: bash
         run: |
+          set -euo pipefail
           TAG="${GITHUB_REF##refs/tags/v}"
-          jq ".version = \"$TAG\"" package.json > tmp.json && mv tmp.json package.json
-      - name: Prime Bun cache for baseline target (Windows workaround)
-        if: ${{ contains(matrix.target, 'baseline') && contains(matrix.target, 'windows') }}
+          TAG="$TAG" node -e "const fs=require('node:fs');const p=JSON.parse(fs.readFileSync('package.json','utf8'));p.version=process.env.TAG;fs.writeFileSync('package.json', JSON.stringify(p, null, 2) + '\n');"
+      - name: Build standalone CLI binary
         shell: bash
         run: |
-          # Workaround for https://github.com/oven-sh/bun/issues/13513
-          cd /c
-          mkdir -p bun-cache-primer
-          cd bun-cache-primer
-          echo 'console.log("cache primer")' > index.js
-          bun build --compile --target=${{ matrix.target }} ./index.js --outfile primer.exe || true
-          cd $GITHUB_WORKSPACE
-      - name: Compile standalone binary
-        shell: bash
-        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF##refs/tags/v}"
           mkdir -p dist
-          bun build src/cli/index.ts --compile --minify --target=${{ matrix.target }} --define __COUNCIL_VERSION__="\"${GITHUB_REF##refs/tags/v}\"" --outfile=dist/${{ env.BIN }}
-      - name: Make binary executable (non-Windows)
-        if: ${{ !contains(matrix.target,'windows') }}
-        run: chmod +x "dist/${{ env.BIN }}"
-      - name: Check build output and move binary
+          bun build src/cli/index.ts --compile --minify --define __COUNCIL_VERSION__="\"${TAG}\"" --outfile="dist/council${{ matrix.binary_ext }}"
+      - name: Smoke-test CLI binary
         shell: bash
         run: |
-          echo "Contents of dist/:"
-          ls -la dist/
-          echo "Moving dist/${{ env.BIN }} to ${{ env.BIN }}"
-          mv dist/${{ env.BIN }} ${{ env.BIN }}
-          echo "Final binary size:"
-          ls -lh ${{ env.BIN }}
+          set -euo pipefail
+          CLI_BIN="dist/council${{ matrix.binary_ext }}"
+          if [[ "${{ matrix.platform }}" != "win" ]]; then
+            chmod +x "$CLI_BIN"
+          fi
+          "./$CLI_BIN" --version
+          "./$CLI_BIN" --help
+      - name: Build Electrobun stable desktop artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF##refs/tags/v}"
+          AGENTS_COUNCIL_VERSION="$TAG" bunx electrobun build --env=stable
+      - name: Collect release payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          PREFIX="stable-${{ matrix.platform }}-${{ matrix.arch }}-"
+          mkdir -p bundle/cli bundle/desktop-artifacts
+          cp "dist/council${{ matrix.binary_ext }}" "bundle/cli/council${{ matrix.binary_ext }}"
+          find artifacts -maxdepth 1 -type f -name "${PREFIX}*" -exec cp {} bundle/desktop-artifacts/ \;
+
+          DESKTOP_COUNT=$(find bundle/desktop-artifacts -maxdepth 1 -type f | wc -l | tr -d ' ')
+          if [[ "$DESKTOP_COUNT" -eq 0 ]]; then
+            echo "No desktop artifacts found for prefix ${PREFIX}"
+            ls -la artifacts || true
+            exit 1
+          fi
+
+          UPDATE_COUNT=$(find bundle/desktop-artifacts -maxdepth 1 -type f -name "${PREFIX}*update.json" | wc -l | tr -d ' ')
+          BUNDLE_COUNT=$(find bundle/desktop-artifacts -maxdepth 1 -type f -name "${PREFIX}*.tar.zst" | wc -l | tr -d ' ')
+          if [[ "$UPDATE_COUNT" -eq 0 || "$BUNDLE_COUNT" -eq 0 ]]; then
+            echo "Incomplete desktop artifact set for ${PREFIX}"
+            ls -la bundle/desktop-artifacts
+            exit 1
+          fi
+
+          case "${{ matrix.platform }}" in
+            macos)
+              INSTALLER_COUNT=$(find bundle/desktop-artifacts -maxdepth 1 -type f -name "${PREFIX}*.dmg" | wc -l | tr -d ' ')
+              ;;
+            linux)
+              INSTALLER_COUNT=$(find bundle/desktop-artifacts -maxdepth 1 -type f -name "${PREFIX}*Setup*.tar.gz" | wc -l | tr -d ' ')
+              ;;
+            win)
+              INSTALLER_COUNT=$(find bundle/desktop-artifacts -maxdepth 1 -type f -name "${PREFIX}*Setup*.zip" | wc -l | tr -d ' ')
+              ;;
+            *)
+              echo "Unsupported platform: ${{ matrix.platform }}"
+              exit 1
+              ;;
+          esac
+          if [[ "$INSTALLER_COUNT" -eq 0 ]]; then
+            echo "Missing installer for ${PREFIX}"
+            ls -la bundle/desktop-artifacts
+            exit 1
+          fi
+
+          ls -la bundle/cli
+          ls -la bundle/desktop-artifacts
       - uses: actions/upload-artifact@v6
         with:
-          name: council-${{ matrix.target }}
-          path: ${{ env.BIN }}
+          name: release-${{ matrix.package }}
+          path: bundle
 
   npm-publish:
     needs: build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - name: Prepare npm package
+      - name: Prepare root npm package payload
         shell: bash
         run: |
+          set -euo pipefail
           mkdir -p dist
           cp scripts/cli.cjs dist/cli.js
           cp scripts/resolveBinary.cjs dist/resolveBinary.cjs
           cp scripts/postuninstall.cjs dist/postuninstall.cjs
           chmod +x dist/cli.js
-      - name: Create npm-ready package.json
+      - name: Create npm-ready root package.json
         shell: bash
         run: |
+          set -euo pipefail
           TAG="${GITHUB_REF##refs/tags/v}"
           jq 'del(.devDependencies,.scripts.prepare,.scripts.preinstall,.type) |
               .version = "'$TAG'" |
@@ -119,79 +186,87 @@ jobs:
           npm install -g npm@11.7.0
           npm --version
       - name: Dry run trusted publish
+        shell: bash
         run: |
           cd dist
           npm publish --access public --dry-run
-      - name: Publish to npm
+      - name: Publish root package
+        shell: bash
         run: |
           cd dist
           npm publish --access public
 
-  publish-binaries:
+  publish-platform-packages:
     needs: [build, npm-publish]
     strategy:
       matrix:
         include:
-          - target: bun-linux-x64-baseline
-            package: agents-council-linux-x64
-            os: linux
-            cpu: x64
-          - target: bun-linux-arm64
-            package: agents-council-linux-arm64
-            os: linux
-            cpu: arm64
-          - target: bun-darwin-x64
-            package: agents-council-darwin-x64
-            os: darwin
-            cpu: x64
-          - target: bun-darwin-arm64
-            package: agents-council-darwin-arm64
-            os: darwin
-            cpu: arm64
-          - target: bun-windows-x64-baseline
-            package: agents-council-windows-x64
-            os: win32
-            cpu: x64
+          - package: agents-council-linux-x64
+            npm_os: linux
+            npm_cpu: x64
+            binary_ext: ""
+          - package: agents-council-linux-arm64
+            npm_os: linux
+            npm_cpu: arm64
+            binary_ext: ""
+          - package: agents-council-darwin-x64
+            npm_os: darwin
+            npm_cpu: x64
+            binary_ext: ""
+          - package: agents-council-darwin-arm64
+            npm_os: darwin
+            npm_cpu: arm64
+            binary_ext: ""
+          - package: agents-council-windows-x64
+            npm_os: win32
+            npm_cpu: x64
+            binary_ext: .exe
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
       - uses: actions/download-artifact@v7
         with:
-          name: council-${{ matrix.target }}
-        timeout-minutes: 15
-      - name: Prepare package
+          name: release-${{ matrix.package }}
+          path: bundle
+      - name: Prepare platform package payload
         shell: bash
+        env:
+          BINARY_EXT: ${{ matrix.binary_ext }}
+          NPM_CPU: ${{ matrix.npm_cpu }}
+          NPM_OS: ${{ matrix.npm_os }}
+          PACKAGE_NAME: ${{ matrix.package }}
         run: |
+          set -euo pipefail
           TAG="${GITHUB_REF##refs/tags/v}"
-          mkdir -p pkg
-          if [[ -f council-bin.exe ]]; then
-            mv council-bin.exe pkg/council.exe
-          elif [[ -f council-bin ]]; then
-            mv council-bin pkg/council
-          else
-            echo "Error: No binary found"
-            ls -la
-            exit 1
-          fi
+          mkdir -p pkg/desktop-artifacts
+          cp "bundle/cli/council${BINARY_EXT}" "pkg/council${BINARY_EXT}"
+          cp bundle/desktop-artifacts/* pkg/desktop-artifacts/
           cp LICENSE README.md pkg/ 2>/dev/null || true
-          cat <<EOF > pkg/package.json
-          {
-            "name": "${{ matrix.package }}",
-            "version": "${TAG}",
-            "os": ["${{ matrix.os }}"],
-            "cpu": ["${{ matrix.cpu }}"],
-            "files": ["council${{ contains(matrix.target,'windows') && '.exe' || '' }}","package.json","LICENSE"],
-            "repository": {
-              "type": "git",
-              "url": "https://github.com/MrLesk/agents-council"
-            }
-          }
-          EOF
+          TAG="$TAG" node <<'NODE'
+          const fs = require("node:fs");
+          const tag = process.env.TAG;
+          const packageName = process.env.PACKAGE_NAME;
+          const os = process.env.NPM_OS;
+          const cpu = process.env.NPM_CPU;
+          const binaryExt = process.env.BINARY_EXT ?? "";
+          const binaryName = `council${binaryExt}`;
+          const pkg = {
+            name: packageName,
+            version: tag,
+            os: [os],
+            cpu: [cpu],
+            files: [binaryName, "desktop-artifacts/*", "package.json", "README.md", "LICENSE"],
+            repository: {
+              type: "git",
+              url: "https://github.com/MrLesk/agents-council",
+            },
+          };
+          fs.writeFileSync("pkg/package.json", `${JSON.stringify(pkg, null, 2)}\n`);
+          NODE
       - name: Ensure executable permission (non-Windows)
-        if: ${{ !contains(matrix.target,'windows') }}
+        if: ${{ matrix.binary_ext == '' }}
         shell: bash
-        run: |
-          chmod +x pkg/council
+        run: chmod +x pkg/council
       - uses: actions/setup-node@v6
         with:
           node-version: 24
@@ -202,17 +277,19 @@ jobs:
           npm install -g npm@11.7.0
           npm --version
       - name: Dry run platform publish
+        shell: bash
         run: |
           cd pkg
           npm publish --access public --dry-run
       - name: Publish platform package
+        shell: bash
         run: |
           cd pkg
           npm publish --access public
 
   install-sanity:
     name: install-sanity-${{ matrix.os }}
-    needs: [publish-binaries, npm-publish]
+    needs: [publish-platform-packages, npm-publish]
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
@@ -236,11 +313,17 @@ jobs:
             if ./node_modules/.bin/council --version; then
               break
             fi
-            echo "Attempt $attempt: binary not ready, retrying in 15s..."
+            echo "Attempt $attempt: package not available yet, retrying in 15s..."
             sleep 15
           done
           ./node_modules/.bin/council --version
           ./node_modules/.bin/council --help
+          ./node_modules/.bin/council mcp --agent-name install-sanity >mcp.log 2>&1 &
+          MCP_PID=$!
+          sleep 3
+          kill "$MCP_PID" >/dev/null 2>&1 || true
+          wait "$MCP_PID" || true
+          grep -q "Council MCP server running on stdio" mcp.log
       - name: Install and run council (Windows)
         if: ${{ matrix.os == 'windows-latest' }}
         shell: pwsh
@@ -257,51 +340,48 @@ jobs:
               & .\node_modules\.bin\council.cmd --version
               break
             } catch {
-              Write-Host "Attempt ${attempt}: binary not ready, retrying in 15s..."
+              Write-Host "Attempt ${attempt}: package not available yet, retrying in 15s..."
               Start-Sleep -Seconds 15
             }
           }
           & .\node_modules\.bin\council.cmd --version
           & .\node_modules\.bin\council.cmd --help
 
+          $stdoutLog = "mcp.stdout.log"
+          $stderrLog = "mcp.stderr.log"
+          $proc = Start-Process -FilePath ".\node_modules\.bin\council.cmd" -ArgumentList @("mcp", "--agent-name", "install-sanity") -NoNewWindow -PassThru -RedirectStandardOutput $stdoutLog -RedirectStandardError $stderrLog
+          Start-Sleep -Seconds 3
+          if (-not $proc.HasExited) {
+            Stop-Process -Id $proc.Id -Force
+          }
+          Start-Sleep -Seconds 1
+          if (-not (Select-String -Path $stderrLog -Pattern "Council MCP server running on stdio" -Quiet)) {
+            Get-Content $stdoutLog -ErrorAction SilentlyContinue
+            Get-Content $stderrLog -ErrorAction SilentlyContinue
+            throw "MCP startup log not found."
+          }
+
   github-release:
-    needs: build
+    needs: install-sanity
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v7
         with:
+          pattern: release-agents-council-*
           path: release-assets
-        timeout-minutes: 15
-      - name: Rename binaries for release
+      - name: Collect desktop release assets
+        shell: bash
         run: |
-          echo "=== Debug: Downloaded artifacts ==="
-          find release-assets -type f -exec ls -lh {} \;
-          echo "=== Processing artifacts ==="
-          mkdir -p binaries
-          for dir in release-assets/*/; do
-            if [ -d "$dir" ]; then
-              target=$(basename "$dir" | sed 's/council-//')
-              echo "Processing target: $target"
-              echo "Directory contents:"
-              ls -la "$dir"
-              binary=$(find "$dir" -name "council-bin*" -type f)
-              if [ -n "$binary" ]; then
-                echo "Found binary: $binary ($(ls -lh "$binary" | awk '{print $5}'))"
-                if [[ "$target" == *"windows"* ]] && [[ "$binary" == *".exe" ]]; then
-                  cp "$binary" "binaries/council-${target}.exe"
-                  echo "Copied to binaries/council-${target}.exe ($(ls -lh "binaries/council-${target}.exe" | awk '{print $5}'))"
-                else
-                  cp "$binary" "binaries/council-${target}"
-                  echo "Copied to binaries/council-${target} ($(ls -lh "binaries/council-${target}" | awk '{print $5}'))"
-                fi
-              fi
-            fi
-          done
-          echo "=== Final binaries ==="
-          ls -lh binaries/
+          set -euo pipefail
+          mkdir -p desktop-release-assets
+          find release-assets -type f -path "*/desktop-artifacts/*" -print -exec cp {} desktop-release-assets/ \;
+          ls -la desktop-release-assets
+          ls desktop-release-assets/stable-macos-* >/dev/null
+          ls desktop-release-assets/stable-linux-* >/dev/null
+          ls desktop-release-assets/stable-win-* >/dev/null
       - uses: softprops/action-gh-release@v2
         with:
-          files: binaries/*
+          files: desktop-release-assets/*
 
   update-version:
     needs: github-release

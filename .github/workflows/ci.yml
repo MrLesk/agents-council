@@ -33,17 +33,17 @@ jobs:
       - run: bun run lint
       - run: bun run typecheck
 
-  build-test:
-    name: compile-and-smoke-test
+  electrobun-build-smoke:
+    name: electrobun-build-smoke-${{ matrix.os }}
     strategy:
       matrix:
         include:
           - os: ubuntu-latest
-            target: bun-linux-x64-baseline
+            platform: linux
           - os: macos-latest
-            target: bun-darwin-x64
+            platform: macos
           - os: windows-latest
-            target: bun-windows-x64-baseline
+            platform: win
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v6
@@ -58,36 +58,67 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-${{ matrix.os }}-bun-latest-
       - run: bun install --frozen-lockfile --linker=isolated
-      - name: Prime Bun cache for baseline target (Windows workaround)
-        if: ${{ contains(matrix.target, 'baseline') && matrix.os == 'windows-latest' }}
+      - name: Build host CLI binary
         shell: bash
         run: |
-          # Workaround for https://github.com/oven-sh/bun/issues/13513
-          cd /c
-          mkdir -p bun-cache-primer
-          cd bun-cache-primer
-          echo 'console.log("cache primer")' > index.js
-          bun build --compile --target=${{ matrix.target }} ./index.js --outfile primer.exe || true
-          cd $GITHUB_WORKSPACE
-      - name: Build standalone binary
-        shell: bash
-        run: |
-          OUT="council-test${{ contains(matrix.target,'windows') && '.exe' || '' }}"
-          bun build src/cli/index.ts \
-            --compile --minify \
-            --target=${{ matrix.target }} \
-            --outfile="$OUT"
-      - name: Smoke-test binary
-        shell: bash
-        run: |
-          FILE="council-test${{ contains(matrix.target,'windows') && '.exe' || '' }}"
-          if [[ "${{ matrix.os }}" != "windows-latest" ]]; then
-            chmod +x "$FILE"
+          mkdir -p dist
+          OUT="dist/council-test"
+          if [[ "${{ matrix.platform }}" == "win" ]]; then
+            OUT="${OUT}.exe"
           fi
-          if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
-            powershell -command ".\\$FILE --version"
-            powershell -command ".\\$FILE --help"
-          else
-            "./$FILE" --version
-            "./$FILE" --help
+          bun build src/cli/index.ts --compile --minify --outfile="$OUT"
+          echo "CLI_OUT=$OUT" >> "$GITHUB_ENV"
+      - name: Smoke-test CLI binary
+        shell: bash
+        run: |
+          if [[ "${{ matrix.platform }}" != "win" ]]; then
+            chmod +x "$CLI_OUT"
+          fi
+          "./$CLI_OUT" --version
+          "./$CLI_OUT" --help
+      - name: Build Electrobun stable artifacts
+        shell: bash
+        env:
+          AGENTS_COUNCIL_VERSION: "ci-smoke"
+        run: |
+          bunx electrobun build --env=stable
+      - name: Validate Electrobun artifact set
+        shell: bash
+        run: |
+          set -euo pipefail
+          ls -la artifacts
+          PREFIX="stable-${{ matrix.platform }}-"
+          ALL_COUNT=$(find artifacts -maxdepth 1 -type f -name "${PREFIX}*" | wc -l | tr -d ' ')
+          if [[ "$ALL_COUNT" -eq 0 ]]; then
+            echo "No Electrobun artifacts found for prefix: ${PREFIX}"
+            exit 1
+          fi
+          UPDATE_COUNT=$(find artifacts -maxdepth 1 -type f -name "${PREFIX}*update.json" | wc -l | tr -d ' ')
+          if [[ "$UPDATE_COUNT" -eq 0 ]]; then
+            echo "Missing update metadata for ${PREFIX}"
+            exit 1
+          fi
+          BUNDLE_COUNT=$(find artifacts -maxdepth 1 -type f -name "${PREFIX}*.tar.zst" | wc -l | tr -d ' ')
+          if [[ "$BUNDLE_COUNT" -eq 0 ]]; then
+            echo "Missing compressed desktop bundle for ${PREFIX}"
+            exit 1
+          fi
+          case "${{ matrix.platform }}" in
+            macos)
+              INSTALLER_COUNT=$(find artifacts -maxdepth 1 -type f -name "${PREFIX}*.dmg" | wc -l | tr -d ' ')
+              ;;
+            linux)
+              INSTALLER_COUNT=$(find artifacts -maxdepth 1 -type f -name "${PREFIX}*Setup*.tar.gz" | wc -l | tr -d ' ')
+              ;;
+            win)
+              INSTALLER_COUNT=$(find artifacts -maxdepth 1 -type f -name "${PREFIX}*Setup*.zip" | wc -l | tr -d ' ')
+              ;;
+            *)
+              echo "Unsupported platform: ${{ matrix.platform }}"
+              exit 1
+              ;;
+          esac
+          if [[ "$INSTALLER_COUNT" -eq 0 ]]; then
+            echo "Missing desktop installer artifact for ${PREFIX}"
+            exit 1
           fi

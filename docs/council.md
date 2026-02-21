@@ -30,6 +30,35 @@ bun run build
 
 This produces a local binary at `dist/council`.
 
+Build stable Electrobun desktop artifacts for the current host:
+
+```bash
+bun run desktop:build:stable
+```
+
+This produces an `artifacts/` folder with files prefixed `stable-<platform>-<arch>-...`.
+
+## Packaging model
+
+- Root package: `agents-council` (single user-facing npm package).
+- Optional platform packages:
+  - `agents-council-linux-x64`
+  - `agents-council-linux-arm64`
+  - `agents-council-darwin-x64`
+  - `agents-council-darwin-arm64`
+  - `agents-council-windows-x64`
+
+Each optional package contains:
+
+- `council` / `council.exe` CLI binary for terminal usage.
+- `desktop-artifacts/*` Electrobun installer/update artifacts for that platform.
+
+Install-sanity in release CI validates published package behavior for:
+
+- `council --version`
+- `council --help`
+- `council mcp` startup on stdio
+
 ## Run
 
 Desktop-default launch:
