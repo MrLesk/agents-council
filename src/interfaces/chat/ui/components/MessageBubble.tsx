@@ -28,11 +28,7 @@ const filterMarkdownPlugins: NonNullable<MarkdownPreviewProps["pluginsFilter"]> 
 
 export function MessageBubble({ message }: { message: HallMessage }) {
   if (message.message_type === "system") {
-    return (
-      <div className="hall-system-message" role="status">
-        {message.content}
-      </div>
-    );
+    return <output className="hall-system-message">{message.content}</output>;
   }
 
   const bubbleClasses = ["hall-message", `hall-agent-${message.agent_type}`];

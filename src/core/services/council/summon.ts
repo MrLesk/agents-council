@@ -21,7 +21,7 @@ import {
   getFeedbackForSession,
   updateParticipant,
 } from "./index";
-import type { CouncilFeedback, CouncilRequest, CouncilState } from "./types";
+import type { CouncilFeedback, CouncilRequest } from "./types";
 
 export const SUPPORTED_SUMMON_AGENTS = ["Claude", "Codex"] as const;
 export type SupportedSummonAgent = (typeof SUPPORTED_SUMMON_AGENTS)[number];

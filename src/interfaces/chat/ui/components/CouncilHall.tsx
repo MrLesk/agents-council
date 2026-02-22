@@ -1,4 +1,4 @@
-import { type KeyboardEvent } from "react";
+import type { KeyboardEvent } from "react";
 
 import { MessageBubble, type HallAgentType, type HallMessage } from "./MessageBubble";
 
@@ -61,7 +61,7 @@ export function CouncilHall({
           </p>
         </div>
         <div className="council-hall-actions">
-          <div className="council-avatar-stack" aria-label="Active agents">
+          <div className="council-avatar-stack">
             {activeAgents.slice(0, 6).map((name) => (
               <span key={name} title={name}>
                 {initials(name)}
