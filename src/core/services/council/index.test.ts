@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { FileCouncilStateStore } from "../../state/fileStateStore";
-import { CouncilServiceImpl } from "./index";
+import { CouncilServiceImpl, sortSessionsForListing } from "./index";
 
 const tempDirs: string[] = [];
 
@@ -78,5 +78,52 @@ describe("CouncilServiceImpl multi-session lifecycle", () => {
     for (const participant of state.participants) {
       expect(state.sessions.some((session) => session.id === participant.sessionId)).toBe(true);
     }
+  });
+
+  test("closes an explicit session target without changing active session", async () => {
+    const store = await createStore();
+    const service = new CouncilServiceImpl(store);
+
+    const first = await service.startCouncil({ agentName: "alpha", request: "First request" });
+    const second = await service.startCouncil({ agentName: "beta", request: "Second request" });
+    await service.setActiveSession({ agentName: "alpha", sessionId: second.session.id });
+
+    const closed = await service.closeSession({
+      agentName: "moderator",
+      sessionId: first.session.id,
+      conclusion: "Closed first session",
+    });
+
+    expect(closed.session.id).toBe(first.session.id);
+    expect(closed.session.status).toBe("closed");
+
+    const listed = await service.listSessions();
+    expect(listed.activeSessionId).toBe(second.session.id);
+
+    const firstData = await service.getSessionData({ agentName: "reader", sessionId: first.session.id });
+    expect(firstData.session.status).toBe("closed");
+  });
+
+  test("reassigns activeSessionId deterministically when closing the active session", async () => {
+    const store = await createStore();
+    const service = new CouncilServiceImpl(store);
+
+    await service.startCouncil({ agentName: "alpha", request: "First request" });
+    await service.startCouncil({ agentName: "beta", request: "Second request" });
+    const third = await service.startCouncil({ agentName: "gamma", request: "Third request" });
+
+    await service.closeSession({
+      agentName: "moderator",
+      sessionId: third.session.id,
+      conclusion: "Closed active session",
+    });
+
+    const state = await store.load();
+    const expectedActiveSessionId =
+      sortSessionsForListing(state.sessions, null).find((session) => session.status === "active")?.id ?? null;
+
+    expect(state.activeSessionId).toBe(expectedActiveSessionId);
+    expect(state.activeSessionId).not.toBe(third.session.id);
+    expect(state.activeSessionId).not.toBeNull();
   });
 });
