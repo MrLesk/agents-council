@@ -195,6 +195,11 @@ export class CouncilServiceImpl implements CouncilService {
       );
       const nextState: CouncilState = {
         ...state,
+        activeSessionId: resolveActiveSessionIdAfterClose({
+          sessions: updatedSessions,
+          activeSessionId: state.activeSessionId,
+          closedSessionId: updatedSession.id,
+        }),
         sessions: updatedSessions,
         requests: updatedRequests,
         participants,
@@ -591,4 +596,17 @@ export function sortSessionsForListing(sessions: CouncilSession[], activeSession
 
     return left.id.localeCompare(right.id);
   });
+}
+
+function resolveActiveSessionIdAfterClose(input: {
+  sessions: CouncilSession[];
+  activeSessionId: string | null;
+  closedSessionId: string;
+}): string | null {
+  if (input.activeSessionId !== input.closedSessionId) {
+    return input.activeSessionId;
+  }
+
+  const fallback = sortSessionsForListing(input.sessions, null).find((session) => session.status === "active");
+  return fallback?.id ?? null;
 }
