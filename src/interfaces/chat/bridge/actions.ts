@@ -1,5 +1,14 @@
 import type { SummonSettings } from "../../../core/config/summonSettings";
 import { loadSummonSettings, upsertSummonSettings } from "../../../core/config/summonSettings";
+import type {
+  CouncilFeedback,
+  CouncilParticipant,
+  CouncilRequest,
+  CouncilSession,
+  CouncilState,
+  GetCurrentSessionDataResult,
+  SetActiveSessionResult,
+} from "../../../core/services/council/types";
 import { CouncilServiceImpl } from "../../../core/services/council";
 import {
   SUPPORTED_SUMMON_AGENTS,
@@ -35,6 +44,8 @@ import type {
   CloseCouncilResponse,
   GetCurrentSessionDataResponse,
   GlobalSettingsResponse,
+  ListSessionsResponse,
+  SessionListItemDto,
   SendResponseResponse,
   StartCouncilResponse,
   SummonAgentResponse,
@@ -80,6 +91,33 @@ export async function getCurrentSessionDataAction(payload: unknown): Promise<Get
   };
   const result = await getService().getCurrentSessionData(mapGetCurrentSessionDataInput(params));
   return mapGetCurrentSessionDataResponse(result);
+}
+
+export async function listSessionsAction(payload: unknown): Promise<ListSessionsResponse> {
+  const body = requireRecord(payload);
+  const statusValue = optionalString(body, "status");
+  if (statusValue && statusValue !== "all" && statusValue !== "active" && statusValue !== "closed") {
+    throw new BridgeApiError(400, `"status" must be one of: all, active, closed.`);
+  }
+
+  const status = statusValue as "all" | "active" | "closed" | undefined;
+  const result = await getService().listSessions(status ? { status } : undefined);
+  return {
+    active_session_id: result.activeSessionId,
+    sessions: result.sessions.map((session) => mapSessionListItem(session, result.state)),
+  };
+}
+
+export async function setActiveSessionAction(payload: unknown): Promise<GetCurrentSessionDataResponse> {
+  const body = requireRecord(payload);
+  const agentName = requireString(body, "agent_name");
+  const sessionId = requireString(body, "session_id");
+  const result = await getService().setActiveSession({
+    agentName,
+    sessionId,
+  });
+
+  return mapGetCurrentSessionDataResponse(buildSessionDataFromSetActive(result));
 }
 
 export async function sendResponseAction(payload: unknown): Promise<SendResponseResponse> {
@@ -313,6 +351,105 @@ function mapSupportedModelsByAgent(
   }
 
   return mapped;
+}
+
+function mapSessionListItem(session: CouncilSession, state: CouncilState): SessionListItemDto {
+  const requests = state.requests.filter((request) => request.sessionId === session.id);
+  const currentRequest = session.currentRequestId
+    ? (requests.find((request) => request.id === session.currentRequestId) ?? null)
+    : null;
+  const latestRequest = requests.at(-1) ?? null;
+  const request = currentRequest ?? latestRequest;
+  const participantsCount = state.participants.filter((participant) => participant.sessionId === session.id).length;
+  const messageCount = state.feedback.filter((entry) => entry.sessionId === session.id).length;
+
+  return {
+    id: session.id,
+    status: session.status,
+    created_at: session.createdAt,
+    current_request_id: session.currentRequestId,
+    title: deriveSessionTitle(request?.content ?? ""),
+    participant_count: participantsCount,
+    message_count: messageCount,
+  };
+}
+
+function buildSessionDataFromSetActive(result: SetActiveSessionResult): GetCurrentSessionDataResult {
+  const sessionId = result.session.id;
+  const request = getCurrentRequestForSession(result.state, sessionId);
+  const feedback = getFeedbackForSession(result.state, sessionId);
+  const nextCursor = feedback.at(-1)?.id ?? null;
+  const participant: CouncilParticipant = {
+    ...result.participant,
+    lastRequestSeen: request?.id ?? result.participant.lastRequestSeen,
+    lastFeedbackSeen: nextCursor,
+  };
+  const pendingParticipants = computePendingParticipants(
+    getParticipantsForSession(result.state, sessionId),
+    feedback,
+    request?.id ?? null,
+    request?.createdBy ?? null,
+  ).filter((name) => name !== participant.agentName);
+
+  return {
+    agentName: result.agentName,
+    session: result.session,
+    request,
+    feedback,
+    participant,
+    nextCursor,
+    pendingParticipants,
+    state: result.state,
+  };
+}
+
+function getCurrentRequestForSession(state: CouncilState, sessionId: string): CouncilRequest | null {
+  const session = state.sessions.find((candidate) => candidate.id === sessionId) ?? null;
+  const requestId = session?.currentRequestId;
+  if (!requestId) {
+    return null;
+  }
+
+  return state.requests.find((request) => request.sessionId === sessionId && request.id === requestId) ?? null;
+}
+
+function getFeedbackForSession(state: CouncilState, sessionId: string): CouncilFeedback[] {
+  return state.feedback.filter((entry) => entry.sessionId === sessionId);
+}
+
+function getParticipantsForSession(state: CouncilState, sessionId: string): CouncilParticipant[] {
+  return state.participants.filter((entry) => entry.sessionId === sessionId);
+}
+
+function computePendingParticipants(
+  participants: CouncilParticipant[],
+  allFeedback: CouncilFeedback[],
+  currentRequestId: string | null,
+  requestCreator: string | null,
+): string[] {
+  if (!currentRequestId) {
+    return [];
+  }
+
+  const feedbackForRequest = allFeedback.filter((entry) => entry.requestId === currentRequestId);
+  const authorsWithFeedback = new Set(feedbackForRequest.map((entry) => entry.author));
+  if (requestCreator) {
+    authorsWithFeedback.add(requestCreator);
+  }
+
+  return participants.filter((entry) => !authorsWithFeedback.has(entry.agentName)).map((entry) => entry.agentName);
+}
+
+function deriveSessionTitle(content: string): string {
+  const collapsed = content.trim().replace(/\s+/g, " ");
+  if (collapsed.length === 0) {
+    return "Untitled Session";
+  }
+  const maxLength = 56;
+  if (collapsed.length <= maxLength) {
+    return collapsed;
+  }
+  return `${collapsed.slice(0, maxLength - 1)}…`;
 }
 
 function mapSummonSettings(

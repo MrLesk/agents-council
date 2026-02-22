@@ -20,6 +20,16 @@ export type SessionDto = {
   conclusion: ConclusionDto | null;
 };
 
+export type SessionListItemDto = {
+  id: string;
+  status: "active" | "closed";
+  created_at: string;
+  current_request_id: string | null;
+  title: string;
+  participant_count: number;
+  message_count: number;
+};
+
 export type RequestDto = {
   id: string;
   content: string;
@@ -59,6 +69,11 @@ export type GetCurrentSessionDataResponse = {
   next_cursor: string | null;
   pending_participants: string[];
   state: CouncilStateDto;
+};
+
+export type ListSessionsResponse = {
+  active_session_id: string | null;
+  sessions: SessionListItemDto[];
 };
 
 export type CloseCouncilResponse = {

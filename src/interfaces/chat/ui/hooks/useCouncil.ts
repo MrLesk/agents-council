@@ -4,11 +4,13 @@ import {
   closeCouncil,
   getCurrentSessionData,
   joinCouncil,
+  listSessions,
   sendResponse,
+  setActiveSession,
   startCouncil,
   subscribeCouncilStateChanges,
 } from "../api";
-import type { CouncilStateDto, FeedbackDto, RequestDto } from "../types";
+import type { CouncilStateDto, FeedbackDto, RequestDto, SessionListItemDto } from "../types";
 
 export type ConnectionStatus = "listening" | "offline";
 
@@ -25,6 +27,8 @@ export type CouncilContext = {
   lastUpdated: string | null;
   sessionStatus: SessionStatus;
   hallState: HallState;
+  sessions: SessionListItemDto[];
+  activeSessionId: string | null;
   currentRequest: RequestDto | null;
   feedback: FeedbackDto[];
   pendingParticipants: string[];
@@ -34,6 +38,7 @@ export type CouncilContext = {
   join: (name: string) => Promise<boolean>;
   send: (name: string, content: string) => Promise<boolean>;
   close: (name: string, conclusion: string) => Promise<boolean>;
+  selectSession: (name: string, sessionId: string) => Promise<boolean>;
   clearError: () => void;
   clearNotice: () => void;
 };
@@ -47,6 +52,8 @@ export function useCouncil(name: string | null): CouncilContext {
   const [notice, setNotice] = useState<string | null>(null);
   const [wsAttempt, setWsAttempt] = useState(0);
   const [pendingParticipants, setPendingParticipants] = useState<string[]>([]);
+  const [sessions, setSessions] = useState<SessionListItemDto[]>([]);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
 
   const sessionStatus: SessionStatus = state?.session?.status ?? "none";
 
@@ -76,6 +83,15 @@ export function useCouncil(name: string | null): CouncilContext {
     [hallState, currentRequest],
   );
 
+  const loadSnapshot = useCallback(async (agentName: string) => {
+    const [sessionData, chronicle] = await Promise.all([getCurrentSessionData(agentName), listSessions()]);
+    setState(sessionData.state);
+    setPendingParticipants(sessionData.pending_participants);
+    setSessions(chronicle.sessions);
+    setActiveSessionId(chronicle.active_session_id);
+    setLastUpdated(new Date().toLocaleTimeString());
+  }, []);
+
   const refresh = useCallback(async () => {
     if (!name) {
       return;
@@ -84,16 +100,13 @@ export function useCouncil(name: string | null): CouncilContext {
     setError(null);
     setNotice(null);
     try {
-      const result = await getCurrentSessionData(name);
-      setState(result.state);
-      setPendingParticipants(result.pending_participants);
-      setLastUpdated(new Date().toLocaleTimeString());
+      await loadSnapshot(name);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to refresh session.");
     } finally {
       setBusy(false);
     }
-  }, [name]);
+  }, [name, loadSnapshot]);
 
   // Initial fetch when name is set
   useEffect(() => {
@@ -148,86 +161,116 @@ export function useCouncil(name: string | null): CouncilContext {
     };
   }, [name, refresh, wsAttempt]);
 
-  const start = useCallback(async (userName: string, request: string): Promise<boolean> => {
-    if (!request.trim()) {
-      return false;
-    }
-    setBusy(true);
-    setError(null);
-    setNotice(null);
-    try {
-      const result = await startCouncil(userName, request.trim());
-      setState(result.state);
-      setLastUpdated(new Date().toLocaleTimeString());
-      return true;
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to start the council.");
-      return false;
-    } finally {
-      setBusy(false);
-    }
-  }, []);
-
-  const join = useCallback(async (userName: string): Promise<boolean> => {
-    setBusy(true);
-    setError(null);
-    setNotice(null);
-    try {
-      const result = await joinCouncil(userName);
-      setState(result.state);
-      setPendingParticipants(result.pending_participants);
-      setLastUpdated(new Date().toLocaleTimeString());
-      if (!result.session_id || !result.request) {
-        setNotice("No active council found.");
+  const start = useCallback(
+    async (userName: string, request: string): Promise<boolean> => {
+      if (!request.trim()) {
+        return false;
       }
-      return true;
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to join the council.");
-      return false;
-    } finally {
-      setBusy(false);
-    }
-  }, []);
+      setBusy(true);
+      setError(null);
+      setNotice(null);
+      try {
+        await startCouncil(userName, request.trim());
+        await loadSnapshot(userName);
+        return true;
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Unable to start the council.");
+        return false;
+      } finally {
+        setBusy(false);
+      }
+    },
+    [loadSnapshot],
+  );
 
-  const send = useCallback(async (userName: string, content: string): Promise<boolean> => {
-    if (!content.trim()) {
-      return false;
-    }
-    setBusy(true);
-    setError(null);
-    setNotice(null);
-    try {
-      const result = await sendResponse(userName, content.trim());
-      setState(result.state);
-      setLastUpdated(new Date().toLocaleTimeString());
-      return true;
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to send response.");
-      return false;
-    } finally {
-      setBusy(false);
-    }
-  }, []);
+  const join = useCallback(
+    async (userName: string): Promise<boolean> => {
+      setBusy(true);
+      setError(null);
+      setNotice(null);
+      try {
+        const result = await joinCouncil(userName);
+        await loadSnapshot(userName);
+        if (!result.session_id || !result.request) {
+          setNotice("No active council found.");
+        }
+        return true;
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Unable to join the council.");
+        return false;
+      } finally {
+        setBusy(false);
+      }
+    },
+    [loadSnapshot],
+  );
 
-  const close = useCallback(async (userName: string, conclusion: string): Promise<boolean> => {
-    if (!conclusion.trim()) {
-      return false;
-    }
-    setBusy(true);
-    setError(null);
-    setNotice(null);
-    try {
-      const result = await closeCouncil(userName, conclusion.trim());
-      setState(result.state);
-      setLastUpdated(new Date().toLocaleTimeString());
-      return true;
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to close the council.");
-      return false;
-    } finally {
-      setBusy(false);
-    }
-  }, []);
+  const send = useCallback(
+    async (userName: string, content: string): Promise<boolean> => {
+      if (!content.trim()) {
+        return false;
+      }
+      setBusy(true);
+      setError(null);
+      setNotice(null);
+      try {
+        await sendResponse(userName, content.trim());
+        await loadSnapshot(userName);
+        return true;
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Unable to send response.");
+        return false;
+      } finally {
+        setBusy(false);
+      }
+    },
+    [loadSnapshot],
+  );
+
+  const close = useCallback(
+    async (userName: string, conclusion: string): Promise<boolean> => {
+      if (!conclusion.trim()) {
+        return false;
+      }
+      setBusy(true);
+      setError(null);
+      setNotice(null);
+      try {
+        await closeCouncil(userName, conclusion.trim());
+        await loadSnapshot(userName);
+        return true;
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Unable to close the council.");
+        return false;
+      } finally {
+        setBusy(false);
+      }
+    },
+    [loadSnapshot],
+  );
+
+  const selectSession = useCallback(
+    async (userName: string, sessionId: string): Promise<boolean> => {
+      if (!sessionId) {
+        return false;
+      }
+
+      setBusy(true);
+      setError(null);
+      setNotice(null);
+      try {
+        await setActiveSession(userName, sessionId);
+        await loadSnapshot(userName);
+        return true;
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Unable to switch sessions.");
+        return false;
+      } finally {
+        setBusy(false);
+      }
+    },
+    [loadSnapshot],
+  );
 
   return {
     state,
@@ -238,6 +281,8 @@ export function useCouncil(name: string | null): CouncilContext {
     lastUpdated,
     sessionStatus,
     hallState,
+    sessions,
+    activeSessionId,
     currentRequest,
     feedback,
     pendingParticipants,
@@ -247,6 +292,7 @@ export function useCouncil(name: string | null): CouncilContext {
     join,
     send,
     close,
+    selectSession,
     clearError: () => setError(null),
     clearNotice: () => setNotice(null),
   };
