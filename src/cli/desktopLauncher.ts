@@ -6,6 +6,8 @@ const DESKTOP_COMMAND_ARGS_ENV = "COUNCIL_DESKTOP_ARGS";
 const DESKTOP_SOURCE_ENV = "COUNCIL_DESKTOP_LAUNCH_SOURCE";
 const DESKTOP_DEV_SCRIPT = "desktop:dev";
 const EARLY_EXIT_WINDOW_MS = 400;
+const COUNCIL_DESKTOP_EXECUTABLE_BASE = "council-desktop";
+const MACOS_APP_NAME = "Agents Council";
 
 type LaunchSource = "default" | "chat";
 
@@ -52,38 +54,48 @@ function resolveLaunchCommand(): LaunchCommand {
   }
 
   const projectRoot = resolveProjectRoot();
-  if (!projectRoot) {
-    throw new Error(
-      `Desktop runtime is not configured for this invocation. Set ${DESKTOP_COMMAND_ENV} to an executable path to override.`,
-    );
+  if (projectRoot) {
+    return {
+      cmd: ["bun", "run", DESKTOP_DEV_SCRIPT],
+      cwd: projectRoot,
+    };
   }
 
-  return {
-    cmd: ["bun", "run", DESKTOP_DEV_SCRIPT],
-    cwd: projectRoot,
-  };
+  const packagedDesktopExecutable = resolvePackagedDesktopExecutable();
+  if (packagedDesktopExecutable) {
+    return {
+      cmd: [packagedDesktopExecutable],
+      cwd: path.dirname(packagedDesktopExecutable),
+    };
+  }
+
+  throw new Error(
+    `Desktop runtime is not configured for this invocation. Set ${DESKTOP_COMMAND_ENV} to an executable path to override.`,
+  );
 }
 
 function resolveProjectRoot(): string | null {
-  const candidates = new Set<string>();
-  candidates.add(process.cwd());
-
-  const scriptPath = process.argv[1];
-  if (scriptPath) {
-    let dir = path.dirname(path.resolve(scriptPath));
-    for (let index = 0; index < 5; index += 1) {
-      candidates.add(dir);
-      const parent = path.dirname(dir);
-      if (parent === dir) {
-        break;
-      }
-      dir = parent;
-    }
-  }
+  const candidates = collectCandidateRoots();
 
   for (const candidate of candidates) {
     if (isProjectRoot(candidate)) {
       return candidate;
+    }
+  }
+
+  return null;
+}
+
+function resolvePackagedDesktopExecutable(): string | null {
+  const roots = collectCandidateRoots();
+  const relativeCandidates = getPackagedDesktopExecutableCandidates();
+
+  for (const root of roots) {
+    for (const relativeCandidate of relativeCandidates) {
+      const fullPath = path.join(root, relativeCandidate);
+      if (existsSync(fullPath)) {
+        return fullPath;
+      }
     }
   }
 
@@ -114,6 +126,48 @@ function isProjectRoot(directory: string): boolean {
   } catch {
     return false;
   }
+}
+
+function collectCandidateRoots(): string[] {
+  const roots = new Set<string>();
+  roots.add(process.cwd());
+  addPathAncestors(roots, process.argv[1]);
+  addPathAncestors(roots, process.argv[0]);
+  addPathAncestors(roots, process.execPath);
+  return [...roots];
+}
+
+function addPathAncestors(target: Set<string>, inputPath: string | undefined): void {
+  if (!inputPath) {
+    return;
+  }
+
+  let current = path.dirname(path.resolve(inputPath));
+  for (let index = 0; index < 7; index += 1) {
+    target.add(current);
+    const parent = path.dirname(current);
+    if (parent === current) {
+      break;
+    }
+    current = parent;
+  }
+}
+
+function getPackagedDesktopExecutableCandidates(): string[] {
+  const executableName = `${COUNCIL_DESKTOP_EXECUTABLE_BASE}${process.platform === "win32" ? ".exe" : ""}`;
+  const candidates = [
+    executableName,
+    path.join("desktop", executableName),
+    path.join("resources", "desktop", executableName),
+  ];
+
+  if (process.platform === "darwin") {
+    candidates.push(path.join(`${MACOS_APP_NAME}.app`, "Contents", "MacOS", MACOS_APP_NAME));
+    candidates.push(path.join("desktop", `${MACOS_APP_NAME}.app`, "Contents", "MacOS", MACOS_APP_NAME));
+    candidates.push(path.join("resources", "desktop", `${MACOS_APP_NAME}.app`, "Contents", "MacOS", MACOS_APP_NAME));
+  }
+
+  return candidates;
 }
 
 function parseSpaceSeparatedArgs(value?: string): string[] {
