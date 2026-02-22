@@ -36,6 +36,7 @@ jobs:
   electrobun-build-smoke:
     name: electrobun-build-smoke-${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: ubuntu-latest
@@ -76,12 +77,19 @@ jobs:
           fi
           "./$CLI_OUT" --version
           "./$CLI_OUT" --help
-      - name: Build Electrobun stable artifacts
+      - name: Build Electrobun stable artifacts (Unix)
+        if: ${{ matrix.platform != 'win' }}
         shell: bash
         env:
           AGENTS_COUNCIL_VERSION: "ci-smoke"
         run: |
-          bunx electrobun build --env=stable
+          bun run desktop:build:stable
+      - name: Build Electrobun stable artifacts (Windows)
+        if: ${{ matrix.platform == 'win' }}
+        shell: pwsh
+        run: |
+          $env:AGENTS_COUNCIL_VERSION = "ci-smoke"
+          bun run desktop:build:stable
       - name: Validate Electrobun artifact set
         shell: bash
         run: |
