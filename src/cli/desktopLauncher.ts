@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
 import path from "node:path";
 
 const DESKTOP_COMMAND_ENV = "COUNCIL_DESKTOP_COMMAND";
@@ -53,6 +53,11 @@ function resolveLaunchCommand(): LaunchCommand {
     };
   }
 
+  const bundledRuntime = resolveBundledDesktopRuntime();
+  if (bundledRuntime) {
+    return bundledRuntime;
+  }
+
   const projectRoot = resolveProjectRoot();
   if (projectRoot) {
     return {
@@ -70,7 +75,7 @@ function resolveLaunchCommand(): LaunchCommand {
   }
 
   throw new Error(
-    `Desktop runtime is not configured for this invocation. Set ${DESKTOP_COMMAND_ENV} to an executable path to override.`,
+    `Desktop runtime is not configured for this invocation. Set ${DESKTOP_COMMAND_ENV} to an executable path, or run from a source checkout that contains electrobun desktop assets.`,
   );
 }
 
@@ -80,6 +85,35 @@ function resolveProjectRoot(): string | null {
   for (const candidate of candidates) {
     if (isProjectRoot(candidate)) {
       return candidate;
+    }
+  }
+
+  return null;
+}
+
+function resolveBundledDesktopRuntime(): LaunchCommand | null {
+  const searchDirs = collectDesktopSearchDirs();
+  const currentExecutable = normalizePath(process.execPath);
+
+  for (const directory of searchDirs) {
+    for (const command of getBundledCommandCandidates(directory)) {
+      const executable = command[0];
+      if (!executable) {
+        continue;
+      }
+
+      if (!existsSync(executable)) {
+        continue;
+      }
+
+      if (currentExecutable && normalizePath(executable) === currentExecutable) {
+        continue;
+      }
+
+      return {
+        cmd: command,
+        cwd: directory,
+      };
     }
   }
 
@@ -102,6 +136,54 @@ function resolvePackagedDesktopExecutable(): string | null {
   return null;
 }
 
+function collectDesktopSearchDirs(): string[] {
+  const candidates = new Set<string>();
+  candidates.add(process.cwd());
+
+  if (process.execPath) {
+    candidates.add(path.dirname(path.resolve(process.execPath)));
+  }
+  if (process.argv[0]) {
+    candidates.add(path.dirname(path.resolve(process.argv[0])));
+  }
+  if (process.argv[1]) {
+    candidates.add(path.dirname(path.resolve(process.argv[1])));
+  }
+
+  return [...candidates];
+}
+
+function getBundledCommandCandidates(directory: string): string[][] {
+  const candidates: string[][] = [];
+  const executableSuffix = process.platform === "win32" ? ".exe" : "";
+  const binaryNames = [
+    `Agents Council${executableSuffix}`,
+    `Agents Council-dev${executableSuffix}`,
+    `AgentsCouncil${executableSuffix}`,
+    `AgentsCouncil-dev${executableSuffix}`,
+    `agents-council${executableSuffix}`,
+  ];
+
+  for (const binaryName of binaryNames) {
+    candidates.push([path.join(directory, binaryName)]);
+  }
+
+  if (process.platform === "darwin") {
+    const appBundles: Array<{ bundle: string; executable: string }> = [
+      { bundle: "Agents Council.app", executable: "Agents Council" },
+      { bundle: "Agents Council-dev.app", executable: "Agents Council-dev" },
+      { bundle: "AgentsCouncil.app", executable: "AgentsCouncil" },
+      { bundle: "AgentsCouncil-dev.app", executable: "AgentsCouncil-dev" },
+    ];
+
+    for (const bundle of appBundles) {
+      const appExecutable = path.join(directory, bundle.bundle, "Contents", "MacOS", bundle.executable);
+      candidates.push([appExecutable]);
+    }
+  }
+
+  return candidates;
+}
 function isProjectRoot(directory: string): boolean {
   const packageJsonPath = path.join(directory, "package.json");
   const electrobunConfigPath = path.join(directory, "electrobun.config.ts");
@@ -182,6 +264,14 @@ function parseSpaceSeparatedArgs(value?: string): string[] {
 
 function formatCommand(command: string[]): string {
   return command.join(" ");
+}
+
+function normalizePath(value: string): string {
+  try {
+    return realpathSync(value);
+  } catch {
+    return path.resolve(value);
+  }
 }
 
 async function readStderr(proc: Bun.Subprocess): Promise<string> {
