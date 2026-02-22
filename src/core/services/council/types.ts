@@ -1,6 +1,7 @@
 export type CouncilState = {
   version: number;
-  session: CouncilSession | null;
+  activeSessionId: string | null;
+  sessions: CouncilSession[];
   requests: CouncilRequest[];
   feedback: CouncilFeedback[];
   participants: CouncilParticipant[];
@@ -22,6 +23,7 @@ export type CouncilSession = {
 
 export type CouncilRequest = {
   id: string;
+  sessionId: string;
   content: string;
   createdBy: string;
   createdAt: string;
@@ -30,6 +32,7 @@ export type CouncilRequest = {
 
 export type CouncilFeedback = {
   id: string;
+  sessionId: string;
   requestId: string;
   author: string;
   content: string;
@@ -37,6 +40,7 @@ export type CouncilFeedback = {
 };
 
 export type CouncilParticipant = {
+  sessionId: string;
   agentName: string;
   lastSeen: string;
   lastRequestSeen: string | null;
@@ -91,5 +95,44 @@ export type SendResponseInput = {
 export type SendResponseResult = {
   agentName: string;
   feedback: CouncilFeedback;
+  state: CouncilState;
+};
+
+export type ListSessionsInput = {
+  status?: "all" | "active" | "closed";
+};
+
+export type ListSessionsResult = {
+  activeSessionId: string | null;
+  sessions: CouncilSession[];
+  state: CouncilState;
+};
+
+export type GetSessionDataInput = {
+  agentName: string;
+  sessionId: string;
+  cursor?: string;
+};
+
+export type GetSessionDataResult = {
+  agentName: string;
+  session: CouncilSession;
+  request: CouncilRequest | null;
+  feedback: CouncilFeedback[];
+  participant: CouncilParticipant;
+  nextCursor: string | null;
+  pendingParticipants: string[];
+  state: CouncilState;
+};
+
+export type SetActiveSessionInput = {
+  agentName: string;
+  sessionId: string;
+};
+
+export type SetActiveSessionResult = {
+  agentName: string;
+  session: CouncilSession;
+  participant: CouncilParticipant;
   state: CouncilState;
 };

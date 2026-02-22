@@ -14,7 +14,13 @@ import {
   type SummonModelsCacheEntry,
 } from "../../config/summonSettings";
 import { FileCouncilStateStore } from "../../state/fileStateStore";
-import { CouncilServiceImpl, updateParticipant } from "./index";
+import {
+  CouncilServiceImpl,
+  getActiveSession,
+  getCurrentRequestForSession,
+  getFeedbackForSession,
+  updateParticipant,
+} from "./index";
 import type { CouncilFeedback, CouncilRequest, CouncilState } from "./types";
 
 export const SUPPORTED_SUMMON_AGENTS = ["Claude", "Codex"] as const;
@@ -456,21 +462,19 @@ function parseCodexModelFromConfig(config: string): string | null {
   return null;
 }
 
-function getCurrentRequestFromState(state: CouncilState): CouncilRequest | null {
-  const currentId = state.session?.currentRequestId;
-  if (!currentId) {
-    return null;
-  }
-  return state.requests.find((request) => request.id === currentId) ?? null;
-}
-
-async function markParticipantPending(store: FileCouncilStateStore, agent: string, requestId: string): Promise<void> {
+async function markParticipantPending(
+  store: FileCouncilStateStore,
+  sessionId: string,
+  agent: string,
+  requestId: string,
+): Promise<void> {
   const now = new Date().toISOString();
   await store.update((state) => {
-    if (!state.session || state.session.status !== "active") {
+    const session = state.sessions.find((candidate) => candidate.id === sessionId) ?? null;
+    if (!session || session.status !== "active") {
       return { state, result: undefined };
     }
-    const { participants } = updateParticipant(state.participants, agent, now, (candidate) => ({
+    const { participants } = updateParticipant(state.participants, session.id, agent, now, (candidate) => ({
       ...candidate,
       lastSeen: now,
       lastRequestSeen: requestId,
@@ -510,7 +514,7 @@ export async function summonClaudeAgent(input: SummonAgentInput): Promise<Summon
   });
   const store = new FileCouncilStateStore();
   const state = await store.load();
-  const session = state.session;
+  const session = getActiveSession(state);
   if (!session || session.status !== "active") {
     await appendSummonLog({ event: "summon_error", data: { message: "No active council session." } });
     throw new Error("No active council session.");
@@ -523,7 +527,7 @@ export async function summonClaudeAgent(input: SummonAgentInput): Promise<Summon
     event: "summon_session",
     data: { sessionId: session.id, requestId: session.currentRequestId },
   });
-  await markParticipantPending(store, agent, session.currentRequestId);
+  await markParticipantPending(store, session.id, agent, session.currentRequestId);
 
   const settings = await loadSummonSettings();
   const savedAgent = settings.agents[agent] ?? { model: null, reasoningEffort: null };
@@ -546,11 +550,11 @@ export async function summonClaudeAgent(input: SummonAgentInput): Promise<Summon
   });
 
   const service = new CouncilServiceImpl(store);
-  const existingFeedbackIds = new Set(state.feedback.map((entry) => entry.id));
+  const existingFeedbackIds = new Set(getFeedbackForSession(state, session.id).map((entry) => entry.id));
   const councilServer = createSdkMcpServer({
     name: SUMMON_SERVER_NAME,
     version: "0.1.0",
-    tools: buildCouncilTools(service, agent),
+    tools: buildCouncilTools(service, agent, session.id),
   });
 
   const prompt = buildClaudeSummonPrompt();
@@ -604,7 +608,9 @@ export async function summonClaudeAgent(input: SummonAgentInput): Promise<Summon
   }
 
   const updated = await store.load();
-  const feedback = updated.feedback.find((entry) => entry.author === agent && !existingFeedbackIds.has(entry.id));
+  const feedback = getFeedbackForSession(updated, session.id).find(
+    (entry) => entry.author === agent && !existingFeedbackIds.has(entry.id),
+  );
   if (!feedback) {
     await appendSummonLog({ event: "summon_error", data: { message: "Claude did not submit a response." } });
     throw new Error("Claude did not submit a response.");
@@ -635,12 +641,12 @@ export async function summonCodexAgent(input: SummonAgentInput): Promise<SummonA
 
   const store = new FileCouncilStateStore();
   const state = await store.load();
-  const session = state.session;
+  const session = getActiveSession(state);
   if (!session || session.status !== "active") {
     await appendSummonLog({ event: "summon_error", data: { message: "No active council session." } });
     throw new Error("No active council session.");
   }
-  const request = getCurrentRequestFromState(state);
+  const request = getCurrentRequestForSession(state, session.id);
   if (!request) {
     await appendSummonLog({ event: "summon_error", data: { message: "No active request." } });
     throw new Error("No active request.");
@@ -649,7 +655,7 @@ export async function summonCodexAgent(input: SummonAgentInput): Promise<SummonA
     event: "summon_session",
     data: { sessionId: session.id, requestId: request.id },
   });
-  await markParticipantPending(store, agent, request.id);
+  await markParticipantPending(store, session.id, agent, request.id);
 
   const settings = await loadSummonSettings();
   const savedAgent = settings.agents[agent] ?? { model: null, reasoningEffort: null };
@@ -671,7 +677,7 @@ export async function summonCodexAgent(input: SummonAgentInput): Promise<SummonA
     data: { agent, model, reasoningEffort },
   });
 
-  const requestFeedback = state.feedback.filter((entry) => entry.requestId === request.id);
+  const requestFeedback = getFeedbackForSession(state, session.id).filter((entry) => entry.requestId === request.id);
   const prompt = buildCodexSummonPrompt(request, requestFeedback);
   const codexPath = await getCodexExecutablePath();
   const codex = codexPath ? new Codex({ codexPathOverride: codexPath }) : new Codex();
@@ -702,7 +708,11 @@ export async function summonCodexAgent(input: SummonAgentInput): Promise<SummonA
   }
 
   const service = new CouncilServiceImpl(store);
-  const result = await service.sendResponse({ agentName: agent, content: responseText });
+  const result = await service.sendResponseToSession({
+    agentName: agent,
+    content: responseText,
+    sessionId: session.id,
+  });
   await appendSummonLog({
     event: "summon_success",
     data: { feedbackId: result.feedback.id, feedbackAuthor: result.feedback.author },
@@ -715,14 +725,14 @@ export async function summonCodexAgent(input: SummonAgentInput): Promise<SummonA
   };
 }
 
-function buildCouncilTools(service: CouncilServiceImpl, agentName: string) {
+function buildCouncilTools(service: CouncilServiceImpl, agentName: string, sessionId: string) {
   const joinCouncil = tool(
     "join_council",
     "Join the current council session and fetch the request and responses.",
     {},
     async () => {
       try {
-        const result = await service.getCurrentSessionData({ agentName });
+        const result = await service.getSessionData({ agentName, sessionId });
         return toolOk(result);
       } catch (error) {
         return toolError(error);
@@ -738,7 +748,7 @@ function buildCouncilTools(service: CouncilServiceImpl, agentName: string) {
     },
     async ({ cursor }) => {
       try {
-        const result = await service.getCurrentSessionData({ agentName, cursor });
+        const result = await service.getSessionData({ agentName, sessionId, cursor });
         return toolOk(result);
       } catch (error) {
         return toolError(error);
@@ -754,7 +764,7 @@ function buildCouncilTools(service: CouncilServiceImpl, agentName: string) {
     },
     async ({ content }) => {
       try {
-        const result = await service.sendResponse({ agentName, content });
+        const result = await service.sendResponseToSession({ agentName, content, sessionId });
         return toolOk(result);
       } catch (error) {
         return toolError(error);
