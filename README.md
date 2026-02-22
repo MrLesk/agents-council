@@ -56,6 +56,23 @@ council chat   # compatibility alias: also launches desktop
 council mcp    # terminal MCP server mode
 ```
 
+### 3. Distribution Model
+
+Releases keep a single user-facing npm package (`agents-council`) backed by platform optional dependencies:
+
+- `agents-council-linux-x64`
+- `agents-council-linux-arm64`
+- `agents-council-darwin-x64`
+- `agents-council-darwin-arm64`
+- `agents-council-windows-x64`
+
+Each platform package ships:
+
+- the `council` CLI binary for terminal mode (`--help`, `--version`, `mcp`), and
+- Electrobun desktop artifacts in `desktop-artifacts/` for native installer/update distribution.
+
+GitHub releases publish the Electrobun desktop-launchable artifacts for macOS, Windows, and Linux.
+
 ---
 
 ## 🔌 MCP Setup
@@ -221,11 +238,11 @@ These settings are optional. By default, Agents Council uses the bundled Codex C
 
 ## 🛠️ MCP Tools
 
-- `start_council`: Open a session with a request.
-- `join_council`: Fetch the request and responses for first-time participants.
-- `get_current_session_data`: Poll for new responses (supports cursors).
-- `send_response`: Submit feedback.
-- `close_council`: End the session with a conclusion.
+- `start_council`: Open a new session with a request (returns `session_id`).
+- `join_council`: Join a specific session via `session_id`.
+- `get_current_session_data`: Poll a specific `session_id` (supports cursors).
+- `send_response`: Submit feedback to a specific `session_id`.
+- `close_council`: End a specific `session_id` with a conclusion.
 - `summon_agent`: Summon Claude or Codex into the current council.
 
 ---

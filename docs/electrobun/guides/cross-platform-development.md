@@ -30,6 +30,23 @@
 
 Electrobun enables you to build desktop applications that run on macOS, Windows, and Linux from a single codebase. This guide covers platform-specific considerations and best practices for cross-platform development.
 
+## Agents Council CI matrix
+
+Agents Council uses native runners per target package in release CI:
+
+- `ubuntu-latest` -> `linux-x64` (`agents-council-linux-x64`)
+- `ubuntu-24.04-arm` -> `linux-arm64` (`agents-council-linux-arm64`)
+- `macos-13` -> `macos-x64` (`agents-council-darwin-x64`)
+- `macos-14` -> `macos-arm64` (`agents-council-darwin-arm64`)
+- `windows-latest` -> `win-x64` (`agents-council-windows-x64`)
+
+For each runner, the pipeline performs both:
+
+- `bun build --compile` for the platform CLI binary, and
+- `electrobun build --env=stable` for desktop installers/update artifacts.
+
+This avoids cross-compiling Electrobun desktop artifacts and keeps package payloads native to the target OS/arch.
+
 ## Platform-Specific Issues
 
 ### Window Management

@@ -1,10 +1,12 @@
 import type { ElectrobunConfig } from "electrobun";
 
+const appVersion = process.env.AGENTS_COUNCIL_VERSION ?? "0.4.0";
+
 export default {
   app: {
     name: "Agents Council",
     identifier: "dev.agents.council",
-    version: "0.4.0",
+    version: appVersion,
   },
   runtime: {
     exitOnLastWindowClosed: true,
