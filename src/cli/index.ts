@@ -2,15 +2,14 @@ import path from "node:path";
 
 import { Command } from "commander";
 
-import { startChatServer, type ChatServer } from "../interfaces/chat/server";
 import { startMcpServer } from "../interfaces/mcp/server";
+import { launchDesktopApp } from "./desktopLauncher";
 
 type ResponseFormat = "markdown" | "json";
 
 declare const __COUNCIL_VERSION__: string | undefined;
 
-const DEFAULT_CHAT_PORT = 5123;
-const FORCE_SHUTDOWN_TIMEOUT_MS = 3000;
+const LEGACY_CHAT_DEFAULT_PORT = "5123";
 
 const main = async (): Promise<void> => {
   const version = await resolveVersion();
@@ -35,20 +34,15 @@ const main = async (): Promise<void> => {
 
   program
     .command("chat")
-    .description("Start the council chat web interface.")
-    .option("-p, --port <number>", "Port for the local chat server", `${DEFAULT_CHAT_PORT}`)
-    .option("--no-open", "Do not open the browser automatically")
+    .description("Open/focus the desktop Council interface (compatibility alias).")
+    .option("-p, --port <number>", "Deprecated: ignored in desktop mode.", LEGACY_CHAT_DEFAULT_PORT)
+    .option("--no-open", "Deprecated: ignored in desktop mode.")
     .action(async (options: { port: string; open: boolean }) => {
       try {
-        const port = parsePort(options.port);
-        const chatServer = startChatServer({ port });
-        printChatStartup(chatServer.url);
-        if (options.open) {
-          openBrowser(chatServer.url);
-        }
-        setupChatShutdown(chatServer);
+        warnLegacyChatOptions(options);
+        await launchDesktopApp({ source: "chat" });
       } catch (error) {
-        reportAndExit("Failed to start chat server", error);
+        reportAndExit("Failed to launch desktop interface", error);
       }
     });
 
@@ -60,7 +54,11 @@ const main = async (): Promise<void> => {
   });
 
   if (process.argv.length <= 2) {
-    program.outputHelp();
+    try {
+      await launchDesktopApp({ source: "default" });
+    } catch (error) {
+      reportAndExit("Failed to launch desktop interface", error);
+    }
     return;
   }
 
@@ -92,76 +90,13 @@ function parseAgentName(value?: string): string | undefined {
   return agentName;
 }
 
-function parsePort(value: string): number {
-  const port = Number.parseInt(value, 10);
-  if (!Number.isInteger(port)) {
-    throw new Error("Startup error: --port expects an integer.");
+function warnLegacyChatOptions(options: { port: string; open: boolean }): void {
+  if (options.port !== LEGACY_CHAT_DEFAULT_PORT) {
+    console.warn("Ignoring legacy --port/-p option. `council chat` now launches desktop mode.");
   }
-  if (port < 1 || port > 65535) {
-    throw new Error("Startup error: --port must be between 1 and 65535.");
+  if (!options.open) {
+    console.warn("Ignoring legacy --no-open option. `council chat` now launches desktop mode.");
   }
-  return port;
-}
-
-function printChatStartup(url: string): void {
-  const lines = [
-    `\uD83D\uDE80 Agents Council browser interface running at ${url}`,
-    "\u23F9\uFE0F  Press Cmd+C to stop the server",
-    "\uD83D\uDCA1 Open your browser and navigate to the URL above",
-  ];
-  console.log(lines.join("\n"));
-}
-
-function openBrowser(url: string): void {
-  const platform = process.platform;
-  const command =
-    platform === "darwin" ? ["open", url] : platform === "win32" ? ["cmd", "/c", "start", "", url] : ["xdg-open", url];
-
-  try {
-    Bun.spawn(command, {
-      stdin: "ignore",
-      stdout: "ignore",
-      stderr: "ignore",
-    });
-  } catch (error) {
-    console.warn("Unable to open the browser automatically. Please open the URL manually.");
-    console.warn(url);
-    console.warn(error);
-  }
-}
-
-function setupChatShutdown(chatServer: ChatServer): void {
-  let shuttingDown = false;
-  const { server, close } = chatServer;
-
-  const shutdown = (): void => {
-    if (shuttingDown) {
-      return;
-    }
-    shuttingDown = true;
-    console.log(" 🛑 Shutting down council chat...");
-    close();
-
-    const forceTimer = setTimeout(() => {
-      close();
-      void server.stop(true).finally(() => {
-        process.exit(0);
-      });
-    }, FORCE_SHUTDOWN_TIMEOUT_MS);
-
-    void server
-      .stop()
-      .catch((error: unknown) => {
-        console.error("Failed to stop chat server:", error);
-      })
-      .finally(() => {
-        clearTimeout(forceTimer);
-        process.exit(0);
-      });
-  };
-
-  process.on("SIGINT", shutdown);
-  process.on("SIGTERM", shutdown);
 }
 
 function reportAndExit(message: string, error: unknown): never {

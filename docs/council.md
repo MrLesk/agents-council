@@ -2,7 +2,10 @@
 
 ## Overview
 
-`agents-council` ships a local CLI named `council` that exposes an MCP stdio server.
+`agents-council` ships a local CLI named `council` with dual-mode behavior:
+- desktop mode by default (`council` with no command),
+- MCP stdio mode via `council mcp`.
+
 The MCP adapter only forwards requests; business logic lives in the core service.
 
 ## Install
@@ -29,6 +32,14 @@ This produces a local binary at `dist/council`.
 
 ## Run
 
+Desktop-default launch:
+
+```bash
+./dist/council
+```
+
+Explicit MCP mode:
+
 ```bash
 ./dist/council mcp
 ```
@@ -39,7 +50,11 @@ Optional default agent name:
 ./dist/council mcp --agent-name agent-a
 ```
 
-If you run without `mcp`, the CLI prints a short usage message and exits 0.
+`council chat` remains available as a compatibility alias and launches desktop mode:
+
+```bash
+./dist/council chat
+```
 
 Help and version flags are also supported without starting the server:
 
@@ -48,27 +63,12 @@ Help and version flags are also supported without starting the server:
 ./dist/council --version
 ```
 
-### Chat UI
+### Desktop UI
 
-```bash
-./dist/council chat
-```
-
-Set a custom port (default: 5123):
-
-```bash
-./dist/council chat --port 5123
-./dist/council chat -p 5123
-```
-
-Disable auto-open:
-
-```bash
-./dist/council chat --no-open
-```
-
-The MCP tools are meant for AI agent clients (Claude/Codex/Gemini/etc). The chat UI is the human-facing
+The MCP tools are meant for AI agent clients (Claude/Codex/Gemini/etc). The desktop UI is the human-facing
 interface for participating in the same local council session.
+
+The previous Bun.serve-backed web chat startup path is no longer the primary runtime path for UI launch.
 
 The UI contract follows the Council Hall redesign:
 

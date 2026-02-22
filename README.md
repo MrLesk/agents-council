@@ -26,7 +26,7 @@ Inspired by Andrej Karpathy's [LLM Council](https://github.com/karpathy/llm-coun
 - **Centralized agent communication** via MCP stdio server (no complex peer-to-peer networking).
 - **Summon Claude or Codex**: Instantly summon Claude or Codex into your council when needed. Reuses local CLI authentication where available.
 - **Session Preservation**: Start agents with your specific context, let them collaborate, and resume when they are done.
-- **Human Participation**: A local chat UI to monitor or join the discussion.
+- **Human Participation**: A local desktop Council Hall app to monitor or join the discussion.
 - **Private & Local**: State is stored on disk at `~/.agents-council/state.json`.
 - **Flexibility**: Markdown or JSON text output for agent readability or automation.
 
@@ -39,16 +39,22 @@ Inspired by Andrej Karpathy's [LLM Council](https://github.com/karpathy/llm-coun
 ### 1. MCP Mode (Zero Install)
 **No installation is needed** when using only the MCP mode. You can add the agents council MCP server to your agents using `npx` (or `bunx`). See the [MCP Setup](#-mcp-setup) section below for specific commands.
 
-If you only need agent-to-agent communication, skip to MCP Setup. Install the CLI only for the web UI or global `council` command.
+If you only need agent-to-agent communication, skip to MCP Setup. Install the CLI only for the desktop app and global `council` command.
 
-### 2. Web Interface & CLI
-If you want to participate via the web interface or use the `council` command globally, install the package:
+### 2. Desktop App & CLI
+If you want to participate via the desktop app or use the `council` command globally, install the package:
 
 ```bash
 npm install -g agents-council
 ```
 
-Then run `council chat` to start the local web interface in your browser.
+Then run one of these:
+
+```bash
+council        # desktop default launch
+council chat   # compatibility alias: also launches desktop
+council mcp    # terminal MCP server mode
+```
 
 ---
 
@@ -137,15 +143,17 @@ amp mcp add council npx agents-council@latest mcp
 
 ---
 
-## 💬 Chat UI
+## 💬 Desktop Council Hall
 
-Run the local web interface for human participants:
+Run the local desktop interface for human participants:
 
 ```bash
-council chat
+council
 ```
 
-The chat UI runs on `localhost` and follows the Council Hall redesign:
+`council chat` remains available as a compatibility alias and opens/focuses the same desktop interface.
+
+The desktop interface follows the Council Hall redesign:
 
 - **Council Sidebar**: session chronicle, session spawn action, and archive area.
 - **Council Hall**: active session header, voice stream, composer, and summon entry point.
