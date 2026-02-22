@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { FileCouncilStateStore } from "../../state/fileStateStore";
-import { CouncilServiceImpl } from "./index";
+import { CouncilServiceImpl, sortSessionsForListing } from "./index";
 
 const tempDirs: string[] = [];
 
@@ -102,5 +102,28 @@ describe("CouncilServiceImpl multi-session lifecycle", () => {
 
     const firstData = await service.getSessionData({ agentName: "reader", sessionId: first.session.id });
     expect(firstData.session.status).toBe("closed");
+  });
+
+  test("reassigns activeSessionId deterministically when closing the active session", async () => {
+    const store = await createStore();
+    const service = new CouncilServiceImpl(store);
+
+    await service.startCouncil({ agentName: "alpha", request: "First request" });
+    await service.startCouncil({ agentName: "beta", request: "Second request" });
+    const third = await service.startCouncil({ agentName: "gamma", request: "Third request" });
+
+    await service.closeSession({
+      agentName: "moderator",
+      sessionId: third.session.id,
+      conclusion: "Closed active session",
+    });
+
+    const state = await store.load();
+    const expectedActiveSessionId =
+      sortSessionsForListing(state.sessions, null).find((session) => session.status === "active")?.id ?? null;
+
+    expect(state.activeSessionId).toBe(expectedActiveSessionId);
+    expect(state.activeSessionId).not.toBe(third.session.id);
+    expect(state.activeSessionId).not.toBeNull();
   });
 });
